@@ -20,15 +20,19 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-$database = Join-Path $env:LOCALAPPDATA 'ZaneTask\zanetask.db'
+$dataDir = Join-Path $env:LOCALAPPDATA 'ZaneTask'
+$database = Join-Path $dataDir 'zanetask.db'
 if (Test-Path $database) {
     Step "Backing up your data"
-    $backup = Join-Path (Split-Path $database) ("zanetask.backup-{0:yyyyMMdd-HHmmss}.db" -f (Get-Date))
-    Copy-Item $database $backup
+    # SQLite keeps recent changes in zanetask.db-wal (and -shm); the three files only make sense together,
+    # so each backup is a folder with all of them. The app is closed at this point, so they are consistent.
+    $backup = Join-Path $dataDir ("backups\{0:yyyyMMdd-HHmmss}" -f (Get-Date))
+    New-Item -ItemType Directory -Path $backup -Force | Out-Null
+    Get-ChildItem $dataDir -File -Filter 'zanetask.db*' | Copy-Item -Destination $backup
     Write-Host "  $backup"
     # Keep the 5 most recent backups.
-    Get-ChildItem (Split-Path $database) -Filter 'zanetask.backup-*.db' |
-        Sort-Object Name -Descending | Select-Object -Skip 5 | Remove-Item
+    Get-ChildItem (Join-Path $dataDir 'backups') -Directory |
+        Sort-Object Name -Descending | Select-Object -Skip 5 | Remove-Item -Recurse -Force
 }
 
 Step "Removing the previous version (your data is kept)"
