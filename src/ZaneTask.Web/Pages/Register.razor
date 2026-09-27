@@ -1,0 +1,81 @@
+@page "/register"
+@attribute [AllowAnonymous]
+@layout AuthLayout
+@inject ApiClient Api
+@inject JwtAuthenticationStateProvider Auth
+@inject NavigationManager Navigation
+
+<PageTitle>Create account · ZaneTask</PageTitle>
+
+<section class="card auth__card">
+    <h1 class="auth__title">Create your account</h1>
+    <p class="text-muted">Plan projects and move work forward with your team.</p>
+
+    <EditForm Model="_form" OnValidSubmit="SubmitAsync" OnInvalidSubmit="() => _errors.Focus()" FormName="register" class="form">
+        <DataAnnotationsValidator />
+        <FormErrors @ref="_errors" />
+
+        <div class="field">
+            <label for="reg-name">Name</label>
+            <InputText id="reg-name" class="input" autocomplete="name" @bind-Value="_form.DisplayName" aria-describedby="reg-name-error" />
+            <FieldError For="() => _form.DisplayName" Id="reg-name-error" />
+        </div>
+
+        <div class="field">
+            <label for="reg-email">Work email</label>
+            <InputText id="reg-email" type="email" class="input" autocomplete="email" inputmode="email"
+                       @bind-Value="_form.Email" aria-describedby="reg-email-error" />
+            <FieldError For="() => _form.Email" Id="reg-email-error" />
+        </div>
+
+        <div class="field">
+            <label for="reg-password">Password</label>
+            <div class="input-group">
+                <InputText id="reg-password" type="@(_showPassword ? "text" : "password")" class="input"
+                           autocomplete="new-password" @bind-Value="_form.Password"
+                           aria-describedby="reg-password-help reg-password-error" />
+                <button type="button" class="btn btn--icon btn--ghost input-group__btn"
+                        aria-label="@(_showPassword ? "Hide password" : "Show password")" aria-pressed="@_showPassword"
+                        @onclick="() => _showPassword = !_showPassword">
+                    <Icon Name="@(_showPassword ? "eye-off" : "eye")" />
+                </button>
+            </div>
+            <p id="reg-password-help" class="field-help">At least 8 characters, with a number, an uppercase and a lowercase letter.</p>
+            <FieldError For="() => _form.Password" Id="reg-password-error" />
+        </div>
+
+        <SubmitButton Busy="_busy" BusyText="Creating account…" Class="btn--primary btn--block">Create account</SubmitButton>
+    </EditForm>
+
+    <p class="auth__switch">Already have an account? <a href="login@(ReturnQuery)">Sign in</a></p>
+</section>
+
+@code {
+    private readonly RegisterForm _form = new();
+    private FormErrors _errors = default!;
+    private bool _busy;
+    private bool _showPassword;
+
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private string ReturnQuery => string.IsNullOrEmpty(ReturnUrl) ? "" : $"?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        try
+        {
+            var session = await Api.RegisterAsync(new RegisterRequest(_form.Email.Trim(), _form.Password, _form.DisplayName.Trim()));
+            await Auth.SignInAsync(session);
+            Navigation.NavigateTo(Login.SafeReturnUrl(ReturnUrl));
+        }
+        catch (ApiException e)
+        {
+            _errors.Show(e);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

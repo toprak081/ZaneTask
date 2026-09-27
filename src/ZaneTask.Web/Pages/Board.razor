@@ -1,0 +1,314 @@
+@page "/projects/{ProjectId:guid}"
+@using ZaneTask.Web.Components.Board
+@inject ApiClient Api
+@inject ToastService Toasts
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>@(_project?.Name ?? "Board") · ZaneTask</PageTitle>
+
+<div class="board-page">
+    @if (_loadError is not null)
+    {
+        <div class="container">
+            <div class="notice notice--error" role="alert">
+                <Icon Name="alert" Size="18" />
+                <span>@_loadError</span>
+                <button type="button" class="btn btn--secondary btn--sm" @onclick="LoadAsync">Try again</button>
+            </div>
+            <a href="" class="back-link"><Icon Name="arrow-left" /> All projects</a>
+        </div>
+    }
+    else if (_project is null || _tasks is null)
+    {
+        <div class="page-loading" role="status"><span class="spinner" aria-hidden="true"></span> Loading board…</div>
+    }
+    else
+    {
+        <div class="board-header">
+            <a href="" class="back-link"><Icon Name="arrow-left" /> All projects</a>
+            <div class="page-header">
+                <div class="page-header__text">
+                    <h1 class="page-title">@_project.Name</h1>
+                    @if (_project.Description is not null)
+                    {
+                        <p class="text-muted">@_project.Description</p>
+                    }
+                </div>
+                <div class="page-header__actions">
+                    <div class="avatar-stack" aria-label="@_project.Members.Count members">
+                        @foreach (var member in _project.Members.Take(5))
+                        {
+                            <Avatar User="member.User" Small="true" @key="member.User.Id" />
+                        }
+                        @if (_project.Members.Count > 5)
+                        {
+                            <span class="avatar avatar--sm avatar--more">+@(_project.Members.Count - 5)</span>
+                        }
+                    </div>
+                    <a class="btn btn--secondary" href="projects/@ProjectId/settings">
+                        <Icon Name="settings" /> Settings
+                    </a>
+                    <button type="button" class="btn btn--primary" @onclick="() => _taskDialog.OpenNew(TaskItemStatus.Todo)">
+                        <Icon Name="plus" /> New task
+                    </button>
+                </div>
+            </div>
+
+            <div class="filters" role="search" aria-label="Filter tasks">
+                <div class="field field--inline filters__search">
+                    <label for="filter-search" class="sr-only">Search tasks</label>
+                    <Icon Name="search" Class="filters__search-icon" />
+                    <input id="filter-search" type="search" class="input" placeholder="Search tasks"
+                           @bind="_search" @bind:event="oninput" />
+                </div>
+                <div class="field field--inline">
+                    <label for="filter-assignee">Assignee</label>
+                    <select id="filter-assignee" class="input" @bind="_assigneeFilter">
+                        <option value="">Anyone</option>
+                        <option value="none">Unassigned</option>
+                        <option value="@_currentUserId">Me</option>
+                        @foreach (var member in _project.Members.Where(m => m.User.Id != _currentUserId))
+                        {
+                            <option value="@member.User.Id">@member.User.DisplayName</option>
+                        }
+                    </select>
+                </div>
+                @if (_project.Labels.Count > 0)
+                {
+                    <div class="field field--inline">
+                        <label for="filter-label">Label</label>
+                        <select id="filter-label" class="input" @bind="_labelFilter">
+                            <option value="">Any</option>
+                            @foreach (var label in _project.Labels)
+                            {
+                                <option value="@label.Id">@label.Name</option>
+                            }
+                        </select>
+                    </div>
+                }
+                @if (HasFilters)
+                {
+                    <button type="button" class="btn btn--ghost btn--sm" @onclick="ClearFilters">
+                        <Icon Name="x" /> Clear filters
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="board">
+            @foreach (var status in Display.Statuses)
+            {
+                var column = Column(status).ToList();
+                var visible = column.Where(Matches).ToList();
+                <section class="column @(_dropStatus == status && _dragging is not null ? "is-drop-target" : null)"
+                         aria-labelledby="col-@status"
+                         @ondragover:preventDefault="true"
+                         @ondragenter="() => OnDragOverColumn(status)"
+                         @ondrop="() => DropAsync(status)">
+                    <header class="column__header">
+                        <h2 id="col-@status" class="column__title">
+                            <span class="status status--@status.ToString().ToLowerInvariant()"><Icon Name="@status.Icon()" /></span>
+                            @status.Name()
+                        </h2>
+                        <span class="column__count" aria-label="@visible.Count tasks">@visible.Count</span>
+                    </header>
+
+                    @if (visible.Count == 0)
+                    {
+                        <p class="column__empty">@(HasFilters && column.Count > 0 ? "No matching tasks." : "Nothing here yet.")</p>
+                    }
+                    <ul class="column__list">
+                        @foreach (var task in visible)
+                        {
+                            <TaskCard @key="task.Id"
+                                      Item="task"
+                                      ColumnCount="column.Count"
+                                      Today="_today"
+                                      IsDragging="_dragging?.Id == task.Id"
+                                      IsDropTarget="_dropBefore?.Id == task.Id && _dragging?.Id != task.Id"
+                                      OnOpen="t => _taskDialog.OpenAsync(t)"
+                                      OnDragStart="t => _dragging = t"
+                                      OnDragEnd="ClearDrag"
+                                      OnDragOverCard="OnDragOverCard"
+                                      OnMove="m => MoveAsync(m.Task, m.Status, m.Position)" />
+                        }
+                    </ul>
+
+                    <button type="button" class="btn btn--ghost btn--block column__add" @onclick="() => _taskDialog.OpenNew(status)">
+                        <Icon Name="plus" /> Add task
+                    </button>
+                </section>
+            }
+        </div>
+
+        <p class="sr-only" aria-live="polite">@_announcement</p>
+
+        <TaskDialog @ref="_taskDialog" Project="_project" CurrentUserId="_currentUserId" OnChanged="ReloadTasksAsync" />
+    }
+</div>
+
+@code {
+    private ProjectDto? _project;
+    private List<TaskDto>? _tasks;
+    private string? _loadError;
+    private Guid _currentUserId;
+    private TaskDialog _taskDialog = default!;
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+
+    private string _search = "";
+    private string _assigneeFilter = "";
+    private string _labelFilter = "";
+
+    private TaskDto? _dragging;
+    private TaskDto? _dropBefore;
+    private TaskItemStatus? _dropStatus;
+    private string _announcement = "";
+
+    [Parameter] public Guid ProjectId { get; set; }
+
+    private bool HasFilters => _search.Length > 0 || _assigneeFilter.Length > 0 || _labelFilter.Length > 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _currentUserId = (await AuthState.GetAuthenticationStateAsync()).User.UserId();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loadError = null;
+        try
+        {
+            var project = Api.GetProjectAsync(ProjectId);
+            var tasks = Api.GetTasksAsync(ProjectId);
+            _project = await project;
+            _tasks = await tasks;
+        }
+        catch (ApiException e)
+        {
+            _loadError = e.Message;
+        }
+    }
+
+    private async Task ReloadTasksAsync()
+    {
+        try
+        {
+            _tasks = await Api.GetTasksAsync(ProjectId);
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private IEnumerable<TaskDto> Column(TaskItemStatus status) =>
+        _tasks!.Where(t => t.Status == status).OrderBy(t => t.Position);
+
+    private bool Matches(TaskDto task)
+    {
+        if (_search.Length > 0 &&
+            !task.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) &&
+            !(task.Description?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false))
+            return false;
+
+        if (_assigneeFilter == "none" && task.Assignee is not null)
+            return false;
+        if (Guid.TryParse(_assigneeFilter, out var assignee) && task.Assignee?.Id != assignee)
+            return false;
+
+        if (Guid.TryParse(_labelFilter, out var label) && task.Labels.All(l => l.Id != label))
+            return false;
+
+        return true;
+    }
+
+    private void ClearFilters() => (_search, _assigneeFilter, _labelFilter) = ("", "", "");
+
+    // Drag and drop -------------------------------------------------------
+
+    private void OnDragOverCard(TaskDto target)
+    {
+        if (_dragging is null)
+            return;
+        _dropBefore = target;
+        _dropStatus = target.Status;
+    }
+
+    private void OnDragOverColumn(TaskItemStatus status)
+    {
+        if (_dragging is null || _dropStatus == status)
+            return;
+        _dropStatus = status;
+        _dropBefore = null;
+    }
+
+    private async Task DropAsync(TaskItemStatus status)
+    {
+        if (_dragging is not { } task)
+            return;
+
+        int position;
+        if (_dropBefore is { } before && before.Status == status && before.Id != task.Id)
+        {
+            // The server removes the task before inserting, so moving down within a column shifts by one.
+            position = before.Position - (task.Status == status && task.Position < before.Position ? 1 : 0);
+        }
+        else
+        {
+            position = int.MaxValue / 2; // end of the column; the server clamps it
+        }
+
+        ClearDrag();
+        await MoveAsync(task, status, position);
+    }
+
+    private void ClearDrag()
+    {
+        _dragging = null;
+        _dropBefore = null;
+        _dropStatus = null;
+    }
+
+    // Moving (shared by drag and drop and the Move menu) --------------------
+
+    private async Task MoveAsync(TaskDto task, TaskItemStatus status, int position)
+    {
+        if (task.Status == status && task.Position == position)
+            return;
+
+        var snapshot = _tasks!;
+        _tasks = ApplyMove(snapshot, task, status, position);
+        var moved = _tasks.First(t => t.Id == task.Id);
+        _announcement = $"Moved “{task.Title}” to {status.Name()}, position {moved.Position + 1}.";
+        StateHasChanged();
+
+        try
+        {
+            await Api.MoveTaskAsync(task.Id, status, moved.Position);
+        }
+        catch (ApiException e)
+        {
+            _tasks = snapshot;
+            Toasts.Error($"Couldn't move the task. {e.Message}");
+        }
+    }
+
+    /// <summary>Client-side mirror of the server's KanbanBoard.Move, for instant feedback.</summary>
+    private static List<TaskDto> ApplyMove(List<TaskDto> tasks, TaskDto task, TaskItemStatus status, int position)
+    {
+        var result = tasks.Where(t => t.Status != status && t.Status != task.Status).ToList();
+
+        var target = tasks.Where(t => t.Status == status && t.Id != task.Id).OrderBy(t => t.Position).ToList();
+        target.Insert(Math.Clamp(position, 0, target.Count), task with { Status = status });
+        result.AddRange(target.Select((t, i) => t with { Position = i }));
+
+        if (task.Status != status)
+        {
+            var source = tasks.Where(t => t.Status == task.Status && t.Id != task.Id).OrderBy(t => t.Position);
+            result.AddRange(source.Select((t, i) => t with { Position = i }));
+        }
+
+        return result;
+    }
+}

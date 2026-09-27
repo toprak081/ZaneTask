@@ -1,0 +1,7 @@
+<span class="priority @Priority.CssClass()">
+    <Icon Name="flag" Size="14" /> @Priority.Name()
+</span>
+
+@code {
+    [Parameter, EditorRequired] public TaskPriority Priority { get; set; }
+}

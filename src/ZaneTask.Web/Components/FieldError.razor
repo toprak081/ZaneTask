@@ -1,0 +1,36 @@
+@using System.Linq.Expressions
+@typeparam TValue
+@implements IDisposable
+
+@* Inline error below a field. Give the input aria-describedby="@Id" so the message is announced with it. *@
+<p id="@Id" class="field-error" hidden="@(!_messages.Any())">
+    @foreach (var message in _messages)
+    {
+        <span><Icon Name="alert" Size="14" /> @message</span>
+    }
+</p>
+
+@code {
+    private FieldIdentifier _field;
+    private List<string> _messages = [];
+
+    [CascadingParameter] private EditContext EditContext { get; set; } = default!;
+    [Parameter, EditorRequired] public Expression<Func<TValue>> For { get; set; } = default!;
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+
+    protected override void OnInitialized() => EditContext.OnValidationStateChanged += OnChanged;
+
+    protected override void OnParametersSet()
+    {
+        _field = FieldIdentifier.Create(For);
+        _messages = EditContext.GetValidationMessages(_field).ToList();
+    }
+
+    private void OnChanged(object? sender, ValidationStateChangedEventArgs e)
+    {
+        _messages = EditContext.GetValidationMessages(_field).ToList();
+        StateHasChanged();
+    }
+
+    public void Dispose() => EditContext.OnValidationStateChanged -= OnChanged;
+}

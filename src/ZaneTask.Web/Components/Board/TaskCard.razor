@@ -1,0 +1,118 @@
+@* One card on the board. Dragging is optional: the "Move" menu offers the same moves for keyboard and touch users. *@
+<li class="task-card @(IsDragging ? "is-dragging" : null) @(IsDropTarget ? "is-drop-before" : null)"
+    draggable="true" data-drag-task
+    @ondragstart="() => OnDragStart.InvokeAsync(Item)"
+    @ondragend="OnDragEnd"
+    @ondragenter="() => OnDragOverCard.InvokeAsync(Item)"
+    @ondragover:preventDefault="true">
+
+    <div class="task-card__top">
+        <span class="task-card__grip" aria-hidden="true"><Icon Name="grip" /></span>
+        <button type="button" class="task-card__title" @onclick="() => OnOpen.InvokeAsync(Item)">
+            @Item.Title
+        </button>
+        <div class="menu">
+            <button type="button" class="btn btn--icon btn--ghost btn--sm" aria-haspopup="true"
+                    aria-expanded="@_menuOpen" aria-label="Move “@Item.Title”" @onclick="ToggleMenu">
+                <Icon Name="move" />
+            </button>
+            @if (_menuOpen)
+            {
+                <div class="menu__panel" role="group" aria-label="Move task" @onkeydown="OnMenuKeyDown">
+                    @foreach (var move in Moves)
+                    {
+                        <button type="button" class="menu__item" disabled="@(!move.Enabled)" @onclick="() => MoveAsync(move)">
+                            <Icon Name="@move.Icon" /> @move.Text
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Item.Labels.Count > 0)
+    {
+        <div class="chips">
+            @foreach (var label in Item.Labels)
+            {
+                <LabelChip Label="label" @key="label.Id" />
+            }
+        </div>
+    }
+
+    <div class="task-card__meta">
+        <PriorityBadge Priority="Item.Priority" />
+        @if (Item.DueDate is { } due)
+        {
+            var overdue = due < Today && Item.Status != TaskItemStatus.Done;
+            <span class="meta @(overdue ? "meta--danger" : null)">
+                <Icon Name="@(overdue ? "alert" : "calendar")" /> @Display.DueText(due, Today)
+            </span>
+        }
+        @if (Item.CommentCount > 0)
+        {
+            <span class="meta" title="Comments">
+                <Icon Name="message" /> @Item.CommentCount <span class="sr-only">comments</span>
+            </span>
+        }
+        <span class="task-card__assignee">
+            @if (Item.Assignee is not null)
+            {
+                <Avatar User="Item.Assignee" Small="true" />
+            }
+            else
+            {
+                <span class="meta">Unassigned</span>
+            }
+        </span>
+    </div>
+</li>
+
+@code {
+    private bool _menuOpen;
+
+    [Parameter, EditorRequired] public TaskDto Item { get; set; } = default!;
+    [Parameter] public int ColumnCount { get; set; }
+    [Parameter] public bool IsDragging { get; set; }
+    [Parameter] public bool IsDropTarget { get; set; }
+    [Parameter] public DateOnly Today { get; set; }
+
+    [Parameter] public EventCallback<TaskDto> OnOpen { get; set; }
+    [Parameter] public EventCallback<TaskDto> OnDragStart { get; set; }
+    [Parameter] public EventCallback OnDragEnd { get; set; }
+    [Parameter] public EventCallback<TaskDto> OnDragOverCard { get; set; }
+
+    /// <summary>Raised by the Move menu with the target status and position.</summary>
+    [Parameter] public EventCallback<(TaskDto Task, TaskItemStatus Status, int Position)> OnMove { get; set; }
+
+    private sealed record MoveOption(string Text, string Icon, bool Enabled, TaskItemStatus Status, int Position);
+
+    private IEnumerable<MoveOption> Moves
+    {
+        get
+        {
+            var index = Array.IndexOf(Display.Statuses, Item.Status);
+            var prev = index > 0 ? Display.Statuses[index - 1] : (TaskItemStatus?)null;
+            var next = index < Display.Statuses.Length - 1 ? Display.Statuses[index + 1] : (TaskItemStatus?)null;
+
+            yield return new($"To {prev?.Name() ?? "previous column"}", "chevron-left", prev is not null, prev ?? Item.Status, int.MaxValue);
+            yield return new($"To {next?.Name() ?? "next column"}", "chevron-right", next is not null, next ?? Item.Status, int.MaxValue);
+            yield return new("Up", "chevron-up", Item.Position > 0, Item.Status, Item.Position - 1);
+            yield return new("Down", "chevron-down", Item.Position < ColumnCount - 1, Item.Status, Item.Position + 1);
+        }
+    }
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+
+    private void OnMenuKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            _menuOpen = false;
+    }
+
+    private async Task MoveAsync(MoveOption move)
+    {
+        _menuOpen = false;
+        await OnMove.InvokeAsync((Item, move.Status, move.Position));
+    }
+}

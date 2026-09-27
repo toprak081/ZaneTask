@@ -1,0 +1,426 @@
+@page "/projects/{ProjectId:guid}/settings"
+@inject ApiClient Api
+@inject ToastService Toasts
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Settings · @(_project?.Name ?? "Project") · ZaneTask</PageTitle>
+
+<div class="container container--narrow">
+    <a href="projects/@ProjectId" class="back-link"><Icon Name="arrow-left" /> Back to board</a>
+
+    @if (_loadError is not null)
+    {
+        <div class="notice notice--error" role="alert">
+            <Icon Name="alert" Size="18" /> <span>@_loadError</span>
+            <button type="button" class="btn btn--secondary btn--sm" @onclick="LoadAsync">Try again</button>
+        </div>
+    }
+    else if (_project is null)
+    {
+        <div class="page-loading" role="status"><span class="spinner" aria-hidden="true"></span> Loading settings…</div>
+    }
+    else
+    {
+        <h1 class="page-title">Project settings</h1>
+
+        @* General ---------------------------------------------------------- *@
+        <section class="card settings-section" aria-labelledby="general-heading">
+            <h2 id="general-heading" class="settings-section__title">General</h2>
+            @if (IsOwner)
+            {
+                <EditForm Model="_projectForm" OnValidSubmit="SaveProjectAsync" OnInvalidSubmit="() => _projectErrors.Focus()" FormName="project" class="form">
+                    <DataAnnotationsValidator />
+                    <FormErrors @ref="_projectErrors" />
+                    <div class="field">
+                        <label for="settings-name">Name <span class="required" aria-hidden="true">*</span></label>
+                        <InputText id="settings-name" class="input" @bind-Value="_projectForm.Name" aria-required="true" aria-describedby="settings-name-error" />
+                        <FieldError For="() => _projectForm.Name" Id="settings-name-error" />
+                    </div>
+                    <div class="field">
+                        <label for="settings-desc">Description</label>
+                        <InputTextArea id="settings-desc" class="input" rows="3" @bind-Value="_projectForm.Description" aria-describedby="settings-desc-error" />
+                        <FieldError For="() => _projectForm.Description" Id="settings-desc-error" />
+                    </div>
+                    <div class="form-actions">
+                        <SubmitButton Busy="_savingProject">Save changes</SubmitButton>
+                    </div>
+                </EditForm>
+            }
+            else
+            {
+                <dl class="details">
+                    <dt>Name</dt><dd>@_project.Name</dd>
+                    <dt>Description</dt><dd>@(_project.Description ?? "—")</dd>
+                </dl>
+                <p class="field-help">Only project owners can change these.</p>
+            }
+        </section>
+
+        @* Members ---------------------------------------------------------- *@
+        <section class="card settings-section" aria-labelledby="members-heading">
+            <h2 id="members-heading" class="settings-section__title">Members <span class="text-muted">(@_project.Members.Count)</span></h2>
+
+            <ul class="member-list">
+                @foreach (var member in _project.Members)
+                {
+                    var isMe = member.User.Id == _currentUserId;
+                    <li class="member" @key="member.User.Id">
+                        <Avatar User="member.User" />
+                        <div class="member__info">
+                            <span class="member__name">@member.User.DisplayName @(isMe ? "(you)" : null)</span>
+                            <span class="text-muted member__email">@member.User.Email</span>
+                        </div>
+                        @if (IsOwner)
+                        {
+                            <label class="sr-only" for="role-@member.User.Id">Role for @member.User.DisplayName</label>
+                            <select id="role-@member.User.Id" class="input input--sm" value="@member.Role"
+                                    @onchange="e => ChangeRoleAsync(member, e.Value?.ToString())">
+                                <option value="@ProjectRole.Member">Member</option>
+                                <option value="@ProjectRole.Owner">Owner</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <span class="badge">@member.Role.Name()</span>
+                        }
+                        @if (isMe)
+                        {
+                            <button type="button" class="btn btn--danger-ghost btn--sm" @onclick="LeaveAsync">
+                                <Icon Name="log-out" /> Leave
+                            </button>
+                        }
+                        else if (IsOwner)
+                        {
+                            <button type="button" class="btn btn--icon btn--danger-ghost" aria-label="Remove @member.User.DisplayName"
+                                    @onclick="() => RemoveMemberAsync(member)">
+                                <Icon Name="trash" />
+                            </button>
+                        }
+                    </li>
+                }
+            </ul>
+
+            @if (IsOwner)
+            {
+                <EditForm Model="_memberForm" OnValidSubmit="AddMemberAsync" OnInvalidSubmit="() => _memberErrors.Focus()" FormName="member" class="form inline-form">
+                    <DataAnnotationsValidator />
+                    <FormErrors @ref="_memberErrors" />
+                    <div class="inline-form__row">
+                        <div class="field inline-form__grow">
+                            <label for="member-email">Invite by email</label>
+                            <InputText id="member-email" type="email" class="input" autocomplete="off" inputmode="email"
+                                       placeholder="teammate@company.com" @bind-Value="_memberForm.Email" aria-describedby="member-email-help member-email-error" />
+                            <p id="member-email-help" class="field-help">They need a ZaneTask account first.</p>
+                            <FieldError For="() => _memberForm.Email" Id="member-email-error" />
+                        </div>
+                        <div class="field">
+                            <label for="member-role">Role</label>
+                            <InputSelect id="member-role" class="input" @bind-Value="_memberForm.Role">
+                                <option value="@ProjectRole.Member">Member</option>
+                                <option value="@ProjectRole.Owner">Owner</option>
+                            </InputSelect>
+                        </div>
+                        <div class="inline-form__submit">
+                            <SubmitButton Busy="_addingMember" BusyText="Adding…"><Icon Name="user-plus" /> Add member</SubmitButton>
+                        </div>
+                    </div>
+                </EditForm>
+            }
+        </section>
+
+        @* Labels ----------------------------------------------------------- *@
+        <section class="card settings-section" aria-labelledby="labels-heading">
+            <h2 id="labels-heading" class="settings-section__title">Labels</h2>
+            <p class="text-muted">Use labels to group tasks, like “Bug”, “Design” or “Backend”.</p>
+
+            @if (_project.Labels.Count > 0)
+            {
+                <ul class="label-list">
+                    @foreach (var label in _project.Labels)
+                    {
+                        <li class="label-row" @key="label.Id">
+                            @if (_editingLabelId == label.Id)
+                            {
+                                <label class="sr-only" for="edit-label-name">Label name</label>
+                                <input id="edit-label-name" class="input input--sm" @bind="_editLabelName" maxlength="50" />
+                                <label class="sr-only" for="edit-label-color">Label color</label>
+                                <input id="edit-label-color" type="color" class="color-input" @bind="_editLabelColor" />
+                                <button type="button" class="btn btn--primary btn--sm" disabled="@string.IsNullOrWhiteSpace(_editLabelName)"
+                                        @onclick="() => SaveLabelAsync(label)">Save</button>
+                                <button type="button" class="btn btn--ghost btn--sm" @onclick="() => _editingLabelId = null">Cancel</button>
+                            }
+                            else
+                            {
+                                <LabelChip Label="label" />
+                                <span class="label-row__spacer"></span>
+                                <button type="button" class="btn btn--icon btn--ghost" aria-label="Edit label @label.Name" @onclick="() => StartEditLabel(label)">
+                                    <Icon Name="pencil" />
+                                </button>
+                                <button type="button" class="btn btn--icon btn--danger-ghost" aria-label="Delete label @label.Name" @onclick="() => DeleteLabelAsync(label)">
+                                    <Icon Name="trash" />
+                                </button>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+
+            <EditForm Model="_labelForm" OnValidSubmit="AddLabelAsync" OnInvalidSubmit="() => _labelErrors.Focus()" FormName="label" class="form inline-form">
+                <DataAnnotationsValidator />
+                <FormErrors @ref="_labelErrors" />
+                <div class="inline-form__row">
+                    <div class="field inline-form__grow">
+                        <label for="label-name">New label</label>
+                        <InputText id="label-name" class="input" autocomplete="off" placeholder="e.g. Bug" @bind-Value="_labelForm.Name" aria-describedby="label-name-error" />
+                        <FieldError For="() => _labelForm.Name" Id="label-name-error" />
+                    </div>
+                    <div class="field">
+                        <label for="label-color">Color</label>
+                        <InputText id="label-color" type="color" class="color-input" @bind-Value="_labelForm.Color" />
+                    </div>
+                    <div class="inline-form__submit">
+                        <SubmitButton Busy="_addingLabel" BusyText="Adding…" Class="btn--secondary"><Icon Name="tag" /> Add label</SubmitButton>
+                    </div>
+                </div>
+            </EditForm>
+        </section>
+
+        @* Danger zone ------------------------------------------------------ *@
+        @if (IsOwner)
+        {
+            <section class="card settings-section settings-section--danger" aria-labelledby="danger-heading">
+                <h2 id="danger-heading" class="settings-section__title">Danger zone</h2>
+                <div class="danger-row">
+                    <div>
+                        <p><strong>Delete this project</strong></p>
+                        <p class="text-muted">All tasks, comments and labels will be permanently deleted. This can’t be undone.</p>
+                    </div>
+                    <button type="button" class="btn btn--danger" @onclick="DeleteProjectAsync">
+                        <Icon Name="trash" /> Delete project
+                    </button>
+                </div>
+            </section>
+        }
+    }
+</div>
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private ProjectDto? _project;
+    private string? _loadError;
+    private Guid _currentUserId;
+    private ConfirmDialog _confirm = default!;
+
+    private ProjectForm _projectForm = new();
+    private FormErrors _projectErrors = default!;
+    private bool _savingProject;
+
+    private MemberForm _memberForm = new();
+    private FormErrors _memberErrors = default!;
+    private bool _addingMember;
+
+    private LabelForm _labelForm = new();
+    private FormErrors _labelErrors = default!;
+    private bool _addingLabel;
+    private Guid? _editingLabelId;
+    private string _editLabelName = "";
+    private string _editLabelColor = "";
+
+    [Parameter] public Guid ProjectId { get; set; }
+
+    private bool IsOwner => _project?.MyRole == ProjectRole.Owner;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _currentUserId = (await AuthState.GetAuthenticationStateAsync()).User.UserId();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loadError = null;
+        try
+        {
+            SetProject(await Api.GetProjectAsync(ProjectId));
+        }
+        catch (ApiException e)
+        {
+            _loadError = e.Message;
+        }
+    }
+
+    private void SetProject(ProjectDto project)
+    {
+        _project = project;
+        _projectForm = new ProjectForm { Name = project.Name, Description = project.Description };
+    }
+
+    private async Task SaveProjectAsync()
+    {
+        _savingProject = true;
+        try
+        {
+            SetProject(await Api.UpdateProjectAsync(ProjectId, new UpdateProjectRequest(_projectForm.Name.Trim(), _projectForm.Description)));
+            Toasts.Success("Project updated.");
+        }
+        catch (ApiException e)
+        {
+            _projectErrors.Show(e);
+        }
+        finally
+        {
+            _savingProject = false;
+        }
+    }
+
+    private async Task AddMemberAsync()
+    {
+        _addingMember = true;
+        try
+        {
+            var member = await Api.AddMemberAsync(ProjectId, new AddMemberRequest(_memberForm.Email.Trim(), _memberForm.Role));
+            Toasts.Success($"{member.User.DisplayName} was added to the project.");
+            _memberForm = new MemberForm();
+            await LoadAsync();
+        }
+        catch (ApiException e) when (e.Status == System.Net.HttpStatusCode.NotFound)
+        {
+            _memberErrors.Show(new ApiException(e.Status, "", new Dictionary<string, string[]>
+            {
+                [nameof(MemberForm.Email)] = ["No ZaneTask account uses this email. Ask them to sign up first."],
+            }));
+        }
+        catch (ApiException e)
+        {
+            _memberErrors.Show(e);
+        }
+        finally
+        {
+            _addingMember = false;
+        }
+    }
+
+    private async Task ChangeRoleAsync(ProjectMemberDto member, string? value)
+    {
+        if (!Enum.TryParse<ProjectRole>(value, out var role) || role == member.Role)
+            return;
+        try
+        {
+            await Api.ChangeMemberRoleAsync(ProjectId, member.User.Id, role);
+            Toasts.Success($"{member.User.DisplayName} is now {role.Name().ToLowerInvariant()}.");
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+        await LoadAsync();
+    }
+
+    private async Task RemoveMemberAsync(ProjectMemberDto member)
+    {
+        if (!await _confirm.AskAsync("Remove member?",
+                $"{member.User.DisplayName} will lose access to this project. Their tasks will become unassigned.", "Remove member"))
+            return;
+        try
+        {
+            await Api.RemoveMemberAsync(ProjectId, member.User.Id);
+            Toasts.Success($"{member.User.DisplayName} was removed.");
+            await LoadAsync();
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private async Task LeaveAsync()
+    {
+        if (!await _confirm.AskAsync("Leave project?",
+                "You'll lose access to this project and your tasks will become unassigned.", "Leave project"))
+            return;
+        try
+        {
+            await Api.RemoveMemberAsync(ProjectId, _currentUserId);
+            Toasts.Success("You left the project.");
+            Navigation.NavigateTo("");
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private async Task AddLabelAsync()
+    {
+        _addingLabel = true;
+        try
+        {
+            await Api.CreateLabelAsync(ProjectId, new SaveLabelRequest(_labelForm.Name.Trim(), _labelForm.Color));
+            _labelForm = new LabelForm();
+            await LoadAsync();
+        }
+        catch (ApiException e)
+        {
+            _labelErrors.Show(e);
+        }
+        finally
+        {
+            _addingLabel = false;
+        }
+    }
+
+    private void StartEditLabel(LabelDto label)
+    {
+        _editingLabelId = label.Id;
+        _editLabelName = label.Name;
+        _editLabelColor = label.Color;
+    }
+
+    private async Task SaveLabelAsync(LabelDto label)
+    {
+        try
+        {
+            await Api.UpdateLabelAsync(ProjectId, label.Id, new SaveLabelRequest(_editLabelName.Trim(), _editLabelColor));
+            _editingLabelId = null;
+            await LoadAsync();
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private async Task DeleteLabelAsync(LabelDto label)
+    {
+        if (!await _confirm.AskAsync("Delete label?", $"“{label.Name}” will be removed from every task.", "Delete label"))
+            return;
+        try
+        {
+            await Api.DeleteLabelAsync(ProjectId, label.Id);
+            await LoadAsync();
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private async Task DeleteProjectAsync()
+    {
+        if (!await _confirm.AskAsync("Delete project?",
+                $"“{_project!.Name}” and all of its tasks, comments and labels will be permanently deleted.", "Delete project"))
+            return;
+        try
+        {
+            await Api.DeleteProjectAsync(ProjectId);
+            Toasts.Success("Project deleted.");
+            Navigation.NavigateTo("");
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+}

@@ -1,0 +1,12 @@
+@* Initials on a deterministic hue per user; the full name is exposed as text for assistive tech. *@
+<span class="avatar @(Small ? "avatar--sm" : null)" style="--avatar-hue: @Hue" title="@User.DisplayName">
+    <span aria-hidden="true">@User.Initials()</span>
+    <span class="sr-only">@User.DisplayName</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public UserDto User { get; set; } = default!;
+    [Parameter] public bool Small { get; set; }
+
+    private int Hue => (int)((uint)User.Id.GetHashCode() % 360);
+}

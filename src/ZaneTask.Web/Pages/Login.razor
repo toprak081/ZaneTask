@@ -1,0 +1,77 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@layout AuthLayout
+@inject ApiClient Api
+@inject JwtAuthenticationStateProvider Auth
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in · ZaneTask</PageTitle>
+
+<section class="card auth__card">
+    <h1 class="auth__title">Sign in</h1>
+    <p class="text-muted">Welcome back. Pick up where your team left off.</p>
+
+    <EditForm Model="_form" OnValidSubmit="SubmitAsync" OnInvalidSubmit="() => _errors.Focus()" FormName="login" class="form">
+        <DataAnnotationsValidator />
+        <FormErrors @ref="_errors" />
+
+        <div class="field">
+            <label for="login-email">Email</label>
+            <InputText id="login-email" type="email" class="input" autocomplete="email" inputmode="email"
+                       @bind-Value="_form.Email" aria-describedby="login-email-error" />
+            <FieldError For="() => _form.Email" Id="login-email-error" />
+        </div>
+
+        <div class="field">
+            <label for="login-password">Password</label>
+            <div class="input-group">
+                <InputText id="login-password" type="@(_showPassword ? "text" : "password")" class="input"
+                           autocomplete="current-password" @bind-Value="_form.Password" aria-describedby="login-password-error" />
+                <button type="button" class="btn btn--icon btn--ghost input-group__btn"
+                        aria-label="@(_showPassword ? "Hide password" : "Show password")" aria-pressed="@_showPassword"
+                        @onclick="() => _showPassword = !_showPassword">
+                    <Icon Name="@(_showPassword ? "eye-off" : "eye")" />
+                </button>
+            </div>
+            <FieldError For="() => _form.Password" Id="login-password-error" />
+        </div>
+
+        <SubmitButton Busy="_busy" BusyText="Signing in…" Class="btn--primary btn--block">Sign in</SubmitButton>
+    </EditForm>
+
+    <p class="auth__switch">New to ZaneTask? <a href="register@(ReturnQuery)">Create an account</a></p>
+</section>
+
+@code {
+    private readonly LoginForm _form = new();
+    private FormErrors _errors = default!;
+    private bool _busy;
+    private bool _showPassword;
+
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private string ReturnQuery => string.IsNullOrEmpty(ReturnUrl) ? "" : $"?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        try
+        {
+            var session = await Api.LoginAsync(new LoginRequest(_form.Email.Trim(), _form.Password));
+            await Auth.SignInAsync(session);
+            Navigation.NavigateTo(SafeReturnUrl(ReturnUrl));
+        }
+        catch (ApiException e)
+        {
+            _errors.Show(e);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Only allow local paths so the login page can't be used as an open redirect.</summary>
+    internal static string SafeReturnUrl(string? url) =>
+        !string.IsNullOrEmpty(url) && url.StartsWith('/') && !url.StartsWith("//") ? url.TrimStart('/') : "";
+}

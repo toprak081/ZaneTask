@@ -1,0 +1,44 @@
+@inherits LayoutComponentBase
+@inject JwtAuthenticationStateProvider Auth
+@inject NavigationManager Navigation
+
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="topbar">
+    <div class="topbar__inner">
+        <a class="brand" href="">
+            <Icon Name="kanban" Size="22" /> <span>ZaneTask</span>
+        </a>
+        <nav class="topbar__nav" aria-label="Main">
+            <NavLink class="topbar__link" href="" Match="NavLinkMatch.All">Projects</NavLink>
+        </nav>
+        <AuthorizeView>
+            <Authorized>
+                <div class="topbar__user">
+                    <Avatar User="CurrentUser(context.User)" Small="true" />
+                    <span class="topbar__name">@context.User.Identity?.Name</span>
+                    <button type="button" class="btn btn--ghost btn--sm" @onclick="SignOutAsync">
+                        <Icon Name="log-out" /> <span>Sign out</span>
+                    </button>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </div>
+</header>
+
+<main id="main" class="main" tabindex="-1">
+    @Body
+</main>
+
+<ToastHost />
+
+@code {
+    private static UserDto CurrentUser(System.Security.Claims.ClaimsPrincipal user) =>
+        new(user.UserId(), user.FindFirst("email")?.Value ?? "", user.Identity?.Name ?? "");
+
+    private async Task SignOutAsync()
+    {
+        await Auth.SignOutAsync();
+        Navigation.NavigateTo("login");
+    }
+}

@@ -1,0 +1,147 @@
+@page "/"
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject ToastService Toasts
+
+<PageTitle>Projects · ZaneTask</PageTitle>
+
+<div class="container">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Projects</h1>
+            <p class="text-muted">Everything your teams are working on.</p>
+        </div>
+        @if (_projects is { Count: > 0 })
+        {
+            <button type="button" class="btn btn--primary" @onclick="OpenCreate">
+                <Icon Name="plus" /> New project
+            </button>
+        }
+    </div>
+
+    @if (_loadError is not null)
+    {
+        <div class="notice notice--error" role="alert">
+            <Icon Name="alert" Size="18" />
+            <span>@_loadError</span>
+            <button type="button" class="btn btn--secondary btn--sm" @onclick="LoadAsync">Try again</button>
+        </div>
+    }
+    else if (_projects is null)
+    {
+        <ul class="project-grid" aria-busy="true" aria-label="Loading projects">
+            @for (var i = 0; i < 3; i++)
+            {
+                <li class="card project-card skeleton" aria-hidden="true">
+                    <span class="skeleton__line skeleton__line--title"></span>
+                    <span class="skeleton__line"></span>
+                    <span class="skeleton__line skeleton__line--short"></span>
+                </li>
+            }
+        </ul>
+    }
+    else if (_projects.Count == 0)
+    {
+        <div class="empty-state card">
+            <Icon Name="kanban" Size="40" />
+            <h2>No projects yet</h2>
+            <p class="text-muted">Create a project to start a board, invite teammates and track work together.</p>
+            <button type="button" class="btn btn--primary" @onclick="OpenCreate">
+                <Icon Name="plus" /> Create your first project
+            </button>
+        </div>
+    }
+    else
+    {
+        <ul class="project-grid">
+            @foreach (var project in _projects)
+            {
+                <li class="card project-card" @key="project.Id">
+                    <div class="project-card__head">
+                        <h2 class="project-card__title">
+                            <a class="stretched-link" href="projects/@project.Id">@project.Name</a>
+                        </h2>
+                        <span class="badge">@project.MyRole.Name()</span>
+                    </div>
+                    <p class="project-card__desc text-muted">@(project.Description ?? "No description")</p>
+                    <dl class="project-card__stats">
+                        <div><dt><Icon Name="circle" /> Open tasks</dt><dd>@project.OpenTaskCount</dd></div>
+                        <div><dt><Icon Name="users" /> Members</dt><dd>@project.MemberCount</dd></div>
+                    </dl>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+<Dialog @ref="_createDialog" Title="New project">
+    <EditForm Model="_form" OnValidSubmit="CreateAsync" OnInvalidSubmit="() => _errors.Focus()" FormName="new-project" class="form">
+        <DataAnnotationsValidator />
+        <FormErrors @ref="_errors" />
+        <div class="field">
+            <label for="project-name">Name <span class="required" aria-hidden="true">*</span></label>
+            <InputText id="project-name" class="input" @bind-Value="_form.Name" aria-required="true"
+                       aria-describedby="project-name-error" autocomplete="off" />
+            <FieldError For="() => _form.Name" Id="project-name-error" />
+        </div>
+        <div class="field">
+            <label for="project-desc">Description <span class="text-muted">(optional)</span></label>
+            <InputTextArea id="project-desc" class="input" rows="3" @bind-Value="_form.Description" aria-describedby="project-desc-error" />
+            <FieldError For="() => _form.Description" Id="project-desc-error" />
+        </div>
+        <div class="dialog__actions">
+            <button type="button" class="btn btn--secondary" @onclick="() => _createDialog.CloseAsync()">Cancel</button>
+            <SubmitButton Busy="_busy" BusyText="Creating…">Create project</SubmitButton>
+        </div>
+    </EditForm>
+</Dialog>
+
+@code {
+    private List<ProjectSummaryDto>? _projects;
+    private string? _loadError;
+    private Dialog _createDialog = default!;
+    private FormErrors _errors = default!;
+    private ProjectForm _form = new();
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loadError = null;
+        try
+        {
+            _projects = await Api.GetProjectsAsync();
+        }
+        catch (ApiException e)
+        {
+            _loadError = e.Message;
+        }
+    }
+
+    private void OpenCreate()
+    {
+        _form = new ProjectForm();
+        _createDialog.Show();
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        try
+        {
+            var project = await Api.CreateProjectAsync(new CreateProjectRequest(_form.Name.Trim(), _form.Description));
+            await _createDialog.CloseAsync();
+            Toasts.Success($"Project “{project.Name}” created.");
+            Navigation.NavigateTo($"projects/{project.Id}");
+        }
+        catch (ApiException e)
+        {
+            _errors.Show(e);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,63 @@
+@api = http://localhost:5299
+@email = alice@example.com
+@password = Passw0rd!
+
+### Register
+POST {{api}}/api/auth/register
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}", "displayName": "Alice" }
+
+### Login (copy accessToken into @token below)
+# @name login
+POST {{api}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+@token = {{login.response.body.$.accessToken}}
+
+### My projects
+GET {{api}}/api/projects
+Authorization: Bearer {{token}}
+
+### Create project
+# @name project
+POST {{api}}/api/projects
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Website relaunch", "description": "Q4 marketing site" }
+
+###
+@projectId = {{project.response.body.$.id}}
+
+### Create task
+# @name task
+POST {{api}}/api/projects/{{projectId}}/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "title": "Design landing page", "priority": "High" }
+
+###
+@taskId = {{task.response.body.$.id}}
+
+### Board
+GET {{api}}/api/projects/{{projectId}}/tasks
+Authorization: Bearer {{token}}
+
+### Move to In Progress
+PUT {{api}}/api/tasks/{{taskId}}/move
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "status": "InProgress", "position": 0 }
+
+### Comment
+POST {{api}}/api/tasks/{{taskId}}/comments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "body": "First draft is in Figma." }

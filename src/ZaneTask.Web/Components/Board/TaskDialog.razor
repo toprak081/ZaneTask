@@ -1,0 +1,382 @@
+@inject ApiClient Api
+@inject ToastService Toasts
+
+<Dialog @ref="_dialog" Title="@(_task is null ? "New task" : "Task details")" Wide="true" OnClosed="OnDialogClosed">
+    <div class="task-dialog @(_task is null ? "task-dialog--new" : null)">
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" OnInvalidSubmit="() => _errors.Focus()" FormName="task" class="form">
+            <DataAnnotationsValidator />
+            <FormErrors @ref="_errors" />
+
+            <div class="field">
+                <label for="task-title">Title <span class="required" aria-hidden="true">*</span></label>
+                <InputText id="task-title" class="input" @bind-Value="_form.Title" aria-required="true"
+                           aria-describedby="task-title-error" autocomplete="off" />
+                <FieldError For="() => _form.Title" Id="task-title-error" />
+            </div>
+
+            <div class="field">
+                <label for="task-desc">Description</label>
+                <InputTextArea id="task-desc" class="input" rows="5" @bind-Value="_form.Description" aria-describedby="task-desc-error" />
+                <FieldError For="() => _form.Description" Id="task-desc-error" />
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label for="task-status">Status</label>
+                    <InputSelect id="task-status" class="input" @bind-Value="_form.Status">
+                        @foreach (var status in Display.Statuses)
+                        {
+                            <option value="@status">@status.Name()</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="field">
+                    <label for="task-priority">Priority</label>
+                    <InputSelect id="task-priority" class="input" @bind-Value="_form.Priority">
+                        @foreach (var priority in Display.Priorities)
+                        {
+                            <option value="@priority">@priority.Name()</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="field">
+                    <label for="task-assignee">Assignee</label>
+                    <InputSelect id="task-assignee" class="input" @bind-Value="_form.AssigneeId">
+                        <option value="">Unassigned</option>
+                        @foreach (var member in Project.Members)
+                        {
+                            <option value="@member.User.Id">@member.User.DisplayName</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="field">
+                    <label for="task-due">Due date</label>
+                    <InputDate id="task-due" class="input" @bind-Value="_form.DueDate" />
+                </div>
+            </div>
+
+            <fieldset class="field">
+                <legend>Labels</legend>
+                @if (Project.Labels.Count == 0)
+                {
+                    <p class="field-help">No labels yet. Add them in <a href="projects/@Project.Id/settings">project settings</a>.</p>
+                }
+                else
+                {
+                    <div class="chips chips--pickable">
+                        @foreach (var label in Project.Labels)
+                        {
+                            var selected = _form.LabelIds.Contains(label.Id);
+                            <button type="button" class="chip chip--pickable @(selected ? "is-selected" : null)"
+                                    style="--chip-color: @label.Color" aria-pressed="@selected" @onclick="() => ToggleLabel(label.Id)">
+                                @if (selected)
+                                {
+                                    <Icon Name="check" Size="14" />
+                                }
+                                else
+                                {
+                                    <span class="chip__dot" aria-hidden="true"></span>
+                                }
+                                @label.Name
+                            </button>
+                        }
+                    </div>
+                }
+            </fieldset>
+
+            <div class="dialog__actions">
+                @if (_task is not null && CanDelete)
+                {
+                    <button type="button" class="btn btn--danger-ghost dialog__actions-start" @onclick="DeleteAsync">
+                        <Icon Name="trash" /> Delete task
+                    </button>
+                }
+                <button type="button" class="btn btn--secondary" @onclick="() => _dialog.CloseAsync()">Cancel</button>
+                <SubmitButton Busy="_busy">@(_task is null ? "Create task" : "Save changes")</SubmitButton>
+            </div>
+        </EditForm>
+
+        @if (_task is not null)
+        {
+            <section class="comments" aria-labelledby="comments-heading">
+                <h3 id="comments-heading" class="comments__title">
+                    <Icon Name="message" /> Comments @(_comments is null ? null : $"({_comments.Count})")
+                </h3>
+                <p class="field-help">Created by @_task.CreatedBy.DisplayName on @_task.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</p>
+
+                @if (_comments is null)
+                {
+                    <p class="text-muted" role="status"><span class="spinner spinner--sm" aria-hidden="true"></span> Loading comments…</p>
+                }
+                else if (_comments.Count == 0)
+                {
+                    <p class="text-muted">No comments yet. Start the conversation below.</p>
+                }
+                else
+                {
+                    <ol class="comment-list">
+                        @foreach (var comment in _comments)
+                        {
+                            <li class="comment" @key="comment.Id">
+                                <Avatar User="comment.Author" Small="true" />
+                                <div class="comment__main">
+                                    <p class="comment__meta">
+                                        <strong>@comment.Author.DisplayName</strong>
+                                        <time datetime="@comment.CreatedAt.ToString("O")">@comment.CreatedAt.ToLocalTime().ToString("MMM d, HH:mm")</time>
+                                        @if (comment.EditedAt is not null)
+                                        {
+                                            <span class="text-muted">(edited)</span>
+                                        }
+                                    </p>
+                                    @if (_editingCommentId == comment.Id)
+                                    {
+                                        <label class="sr-only" for="edit-comment-@comment.Id">Edit comment</label>
+                                        <textarea id="edit-comment-@comment.Id" class="input" rows="3" @bind="_editBody"></textarea>
+                                        <div class="comment__actions">
+                                            <button type="button" class="btn btn--primary btn--sm" disabled="@(_commentBusy || string.IsNullOrWhiteSpace(_editBody))"
+                                                    @onclick="() => SaveCommentAsync(comment)">Save</button>
+                                            <button type="button" class="btn btn--ghost btn--sm" @onclick="() => _editingCommentId = null">Cancel</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="comment__body">@comment.Body</p>
+                                        <div class="comment__actions">
+                                            @if (comment.Author.Id == CurrentUserId)
+                                            {
+                                                <button type="button" class="btn btn--ghost btn--sm" @onclick="() => StartEdit(comment)">
+                                                    <Icon Name="pencil" /> Edit
+                                                </button>
+                                            }
+                                            @if (comment.Author.Id == CurrentUserId || IsOwner)
+                                            {
+                                                <button type="button" class="btn btn--danger-ghost btn--sm" @onclick="() => DeleteCommentAsync(comment)">
+                                                    <Icon Name="trash" /> Delete
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ol>
+                }
+
+                <form class="comment-form" @onsubmit="AddCommentAsync">
+                    <label for="new-comment" class="sr-only">Add a comment</label>
+                    <textarea id="new-comment" class="input" rows="3" placeholder="Write a comment…" @bind="_newComment" @bind:event="oninput"></textarea>
+                    <button type="submit" class="btn btn--secondary" disabled="@(_commentBusy || string.IsNullOrWhiteSpace(_newComment))">
+                        @if (_commentBusy)
+                        {
+                            <span class="spinner spinner--sm" aria-hidden="true"></span>
+                        }
+                        Comment
+                    </button>
+                </form>
+            </section>
+        }
+    </div>
+</Dialog>
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private Dialog _dialog = default!;
+    private ConfirmDialog _confirm = default!;
+    private FormErrors _errors = default!;
+    private TaskForm _form = new();
+    private TaskDto? _task;
+    private List<CommentDto>? _comments;
+    private bool _busy;
+    private bool _changed;
+
+    private string _newComment = "";
+    private Guid? _editingCommentId;
+    private string _editBody = "";
+    private bool _commentBusy;
+
+    [Parameter, EditorRequired] public ProjectDto Project { get; set; } = default!;
+    [Parameter, EditorRequired] public Guid CurrentUserId { get; set; }
+
+    /// <summary>Raised after the dialog closes if anything was created, changed or deleted.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool IsOwner => Project.MyRole == ProjectRole.Owner;
+    private bool CanDelete => _task is not null && (IsOwner || _task.CreatedBy.Id == CurrentUserId);
+
+    public void OpenNew(TaskItemStatus status)
+    {
+        _task = null;
+        _comments = null;
+        _form = new TaskForm { Status = status };
+        _changed = false;
+        _dialog.Show();
+    }
+
+    public async Task OpenAsync(TaskDto task)
+    {
+        _task = task;
+        _form = TaskForm.From(task);
+        _comments = null;
+        _newComment = "";
+        _editingCommentId = null;
+        _changed = false;
+        _dialog.Show();
+
+        try
+        {
+            _comments = await Api.GetCommentsAsync(task.Id);
+        }
+        catch (ApiException e)
+        {
+            _comments = [];
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private void ToggleLabel(Guid id)
+    {
+        if (!_form.LabelIds.Remove(id))
+            _form.LabelIds.Add(id);
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        try
+        {
+            if (_task is null)
+            {
+                await Api.CreateTaskAsync(Project.Id, new CreateTaskRequest(
+                    _form.Title.Trim(), _form.Description, _form.Status, _form.Priority, _form.DueDate,
+                    _form.AssigneeGuid, _form.LabelIds.ToList()));
+                Toasts.Success("Task created.");
+            }
+            else
+            {
+                await SaveExistingAsync(_task);
+                Toasts.Success("Task updated.");
+            }
+
+            _changed = true;
+            await _dialog.CloseAsync();
+        }
+        catch (ApiException e)
+        {
+            _errors.Show(e);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SaveExistingAsync(TaskDto task)
+    {
+        await Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest(_form.Title.Trim(), _form.Description, _form.Priority, _form.DueDate));
+
+        if (_form.AssigneeGuid != task.Assignee?.Id)
+            await Api.AssignTaskAsync(task.Id, _form.AssigneeGuid);
+
+        if (_form.Status != task.Status)
+            await Api.MoveTaskAsync(task.Id, _form.Status, int.MaxValue / 2);
+
+        var current = task.Labels.Select(l => l.Id).ToHashSet();
+        foreach (var added in _form.LabelIds.Except(current))
+            await Api.AddTaskLabelAsync(task.Id, added);
+        foreach (var removed in current.Except(_form.LabelIds))
+            await Api.RemoveTaskLabelAsync(task.Id, removed);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_task is null)
+            return;
+        if (!await _confirm.AskAsync("Delete task?", $"“{_task.Title}” and its comments will be permanently deleted.", "Delete task"))
+            return;
+
+        try
+        {
+            await Api.DeleteTaskAsync(_task.Id);
+            Toasts.Success("Task deleted.");
+            _changed = true;
+            await _dialog.CloseAsync();
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private async Task AddCommentAsync()
+    {
+        if (_task is null || string.IsNullOrWhiteSpace(_newComment))
+            return;
+
+        _commentBusy = true;
+        try
+        {
+            var comment = await Api.AddCommentAsync(_task.Id, _newComment.Trim());
+            (_comments ??= []).Add(comment);
+            _newComment = "";
+            _changed = true;
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+        finally
+        {
+            _commentBusy = false;
+        }
+    }
+
+    private void StartEdit(CommentDto comment)
+    {
+        _editingCommentId = comment.Id;
+        _editBody = comment.Body;
+    }
+
+    private async Task SaveCommentAsync(CommentDto comment)
+    {
+        _commentBusy = true;
+        try
+        {
+            var updated = await Api.UpdateCommentAsync(comment.Id, _editBody.Trim());
+            var index = _comments!.FindIndex(c => c.Id == comment.Id);
+            _comments[index] = updated;
+            _editingCommentId = null;
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+        finally
+        {
+            _commentBusy = false;
+        }
+    }
+
+    private async Task DeleteCommentAsync(CommentDto comment)
+    {
+        if (!await _confirm.AskAsync("Delete comment?", "This comment will be permanently deleted.", "Delete comment"))
+            return;
+
+        try
+        {
+            await Api.DeleteCommentAsync(comment.Id);
+            _comments!.RemoveAll(c => c.Id == comment.Id);
+            _changed = true;
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+    }
+
+    private async Task OnDialogClosed()
+    {
+        if (_changed)
+            await OnChanged.InvokeAsync();
+    }
+}

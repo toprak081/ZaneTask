@@ -1,0 +1,66 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Native modal <dialog>: focus trap, Esc to close and focus return are handled by the browser. *@
+<dialog @ref="_element" class="dialog @(Wide ? "dialog--wide" : null)" aria-labelledby="@_titleId">
+    @if (_open)
+    {
+        <header class="dialog__header">
+            <h2 id="@_titleId" class="dialog__title">@Title</h2>
+            <button type="button" class="btn btn--icon btn--ghost" aria-label="Close" @onclick="CloseAsync">
+                <Icon Name="x" Size="20" />
+            </button>
+        </header>
+        <div class="dialog__body">
+            @ChildContent
+        </div>
+    }
+</dialog>
+
+@code {
+    private readonly string _titleId = $"dialog-title-{Guid.NewGuid():N}";
+    private ElementReference _element;
+    private DotNetObjectReference<Dialog>? _selfRef;
+    private bool _open;
+    private bool _showPending;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    public bool IsOpen => _open;
+
+    public void Show()
+    {
+        _open = true;
+        _showPending = true;
+        StateHasChanged();
+    }
+
+    public async Task CloseAsync() => await JS.InvokeVoidAsync("zanetask.closeDialog", _element);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_showPending)
+        {
+            _showPending = false;
+            _selfRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("zanetask.showDialog", _element, _selfRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnNativeClose()
+    {
+        _open = false;
+        StateHasChanged();
+        await OnClosed.InvokeAsync();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _selfRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

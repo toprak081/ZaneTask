@@ -1,0 +1,25 @@
+@implements IDisposable
+@inject ToastService Toasts
+
+@* Polite live region: announced without stealing focus. *@
+<div class="toasts" role="status" aria-live="polite">
+    @foreach (var toast in Toasts.Toasts)
+    {
+        <div class="toast toast--@toast.Kind.ToString().ToLowerInvariant()" @key="toast.Id">
+            <Icon Name="@(toast.Kind == ToastKind.Success ? "circle-check" : "alert")" Size="18" />
+            <span class="toast__message">@toast.Message</span>
+            <button type="button" class="btn btn--icon btn--ghost" aria-label="Dismiss notification"
+                    @onclick="() => Toasts.Dismiss(toast.Id)">
+                <Icon Name="x" />
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Toasts.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Toasts.Changed -= OnChanged;
+}

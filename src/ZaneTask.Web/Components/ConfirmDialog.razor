@@ -1,0 +1,34 @@
+@* Asks before a destructive action: `if (await confirm.AskAsync(...)) { ... }` *@
+<Dialog @ref="_dialog" Title="@_title" OnClosed="OnClosed">
+    <p class="dialog__text">@_message</p>
+    <div class="dialog__actions">
+        <button type="button" class="btn btn--secondary" @onclick="() => AnswerAsync(false)">Cancel</button>
+        <button type="button" class="btn btn--danger" @onclick="() => AnswerAsync(true)">@_confirmText</button>
+    </div>
+</Dialog>
+
+@code {
+    private Dialog _dialog = default!;
+    private TaskCompletionSource<bool>? _answer;
+    private string _title = "";
+    private string _message = "";
+    private string _confirmText = "";
+
+    public Task<bool> AskAsync(string title, string message, string confirmText)
+    {
+        _answer?.TrySetResult(false);
+        _answer = new TaskCompletionSource<bool>();
+        (_title, _message, _confirmText) = (title, message, confirmText);
+        _dialog.Show();
+        return _answer.Task;
+    }
+
+    private async Task AnswerAsync(bool confirmed)
+    {
+        _answer?.TrySetResult(confirmed);
+        await _dialog.CloseAsync();
+    }
+
+    // Esc or the close button count as "cancel".
+    private void OnClosed() => _answer?.TrySetResult(false);
+}
