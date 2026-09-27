@@ -33,6 +33,9 @@ public sealed record TaskDto(
     IReadOnlyList<LabelDto> Labels,
     int CommentCount);
 
+/// <summary>A task assigned to the current user, with the name of the project it belongs to.</summary>
+public sealed record MyTaskDto(TaskDto Task, string ProjectName);
+
 public sealed record CreateTaskRequest(
     [Required, MaxLength(200)] string Title,
     [MaxLength(10000)] string? Description,

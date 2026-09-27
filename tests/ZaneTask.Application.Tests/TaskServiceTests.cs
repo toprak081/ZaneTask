@@ -131,6 +131,44 @@ public sealed class TaskServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task My_tasks_lists_only_my_open_assignments_ordered_by_due_date_then_priority()
+    {
+        await ProjectWithBobAsync();
+        var other = await _t.Projects.CreateAsync(new("Other", null), default);
+
+        await _t.Tasks.CreateAsync(_projectId, new("No date, low", null, Priority: TaskPriority.Low, AssigneeId: _alice), default);
+        await _t.Tasks.CreateAsync(_projectId, new("Later", null, DueDate: new DateOnly(2026, 12, 1), AssigneeId: _alice), default);
+        await _t.Tasks.CreateAsync(other.Id, new("Soon, other project", null, DueDate: new DateOnly(2026, 10, 1), AssigneeId: _alice), default);
+        await _t.Tasks.CreateAsync(_projectId, new("No date, critical", null, Priority: TaskPriority.Critical, AssigneeId: _alice), default);
+        await _t.Tasks.CreateAsync(_projectId, new("Finished", null, Status: TaskItemStatus.Done, AssigneeId: _alice), default);
+        await _t.Tasks.CreateAsync(_projectId, new("Bob's", null, AssigneeId: _bob), default);
+        await _t.Tasks.CreateAsync(_projectId, new("Unassigned", null), default);
+
+        var open = await _t.Tasks.ListMineAsync(includeDone: false, default);
+        Assert.Equal(
+            ["Soon, other project", "Later", "No date, critical", "No date, low"],
+            open.Select(t => t.Task.Title));
+        Assert.Equal("Other", open[0].ProjectName);
+        Assert.Equal("P", open[1].ProjectName);
+
+        var all = await _t.Tasks.ListMineAsync(includeDone: true, default);
+        Assert.Contains(all, t => t.Task.Title == "Finished");
+    }
+
+    [Fact]
+    public async Task My_tasks_hides_projects_I_left()
+    {
+        await ProjectWithBobAsync();
+        await _t.Tasks.CreateAsync(_projectId, new("For Bob", null, AssigneeId: _bob), default);
+
+        _t.ActAs(_bob);
+        Assert.Single(await _t.Tasks.ListMineAsync(false, default));
+
+        await _t.Projects.RemoveMemberAsync(_projectId, _bob, default);
+        Assert.Empty(await _t.Tasks.ListMineAsync(false, default));
+    }
+
+    [Fact]
     public async Task Labels_can_be_added_and_removed_on_a_task()
     {
         await ProjectWithBobAsync();

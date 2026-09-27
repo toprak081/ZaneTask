@@ -54,6 +54,39 @@ public sealed class TaskService(
         return await ToDtosAsync(ordered, ct);
     }
 
+    /// <summary>
+    /// Tasks assigned to the current user across all their projects: soonest due date first
+    /// (undated last), then highest priority.
+    /// </summary>
+    public async Task<IReadOnlyList<MyTaskDto>> ListMineAsync(bool includeDone, CancellationToken ct)
+    {
+        var me = Me;
+        var query = db.Tasks.AsNoTracking()
+            .Where(t => t.AssigneeId == me)
+            .Where(t => db.Projects.Any(p => p.Id == t.ProjectId && p.Members.Any(m => m.UserId == me)));
+        if (!includeDone)
+            query = query.Where(t => t.Status != Domain.Tasks.TaskItemStatus.Done);
+
+        var rows = await query
+            .Select(t => new TaskRow(t, t.Labels.ToList(), t.Comments.Count()))
+            .ToListAsync(ct);
+
+        var projectIds = rows.Select(r => r.Task.ProjectId).Distinct().ToList();
+        var projectNames = await db.Projects.AsNoTracking()
+            .Where(p => projectIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+
+        var ordered = rows
+            .OrderBy(r => r.Task.DueDate is null)
+            .ThenBy(r => r.Task.DueDate)
+            .ThenByDescending(r => r.Task.Priority)
+            .ThenBy(r => r.Task.CreatedAt)
+            .ToList();
+
+        var dtos = await ToDtosAsync(ordered, ct);
+        return dtos.Select(t => new MyTaskDto(t, projectNames[t.ProjectId])).ToList();
+    }
+
     public async Task<TaskDto> GetAsync(Guid taskId, CancellationToken ct)
     {
         var task = await LoadTaskForMemberAsync(taskId, ct);

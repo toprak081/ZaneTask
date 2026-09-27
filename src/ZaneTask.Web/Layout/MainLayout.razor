@@ -6,11 +6,12 @@
 
 <header class="topbar">
     <div class="topbar__inner">
-        <a class="brand" href="">
-            <Icon Name="kanban" Size="22" /> <span>ZaneTask</span>
+        <a class="brand" href="" aria-label="ZaneTask home">
+            <Icon Name="kanban" Size="22" /> <span class="brand__name">ZaneTask</span>
         </a>
         <nav class="topbar__nav" aria-label="Main">
             <NavLink class="topbar__link" href="" Match="NavLinkMatch.All">Projects</NavLink>
+            <NavLink class="topbar__link" href="my-tasks">My tasks</NavLink>
         </nav>
         <AuthorizeView>
             <Authorized>

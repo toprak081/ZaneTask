@@ -166,12 +166,31 @@
 
     [Parameter] public Guid ProjectId { get; set; }
 
+    /// <summary>Deep link (e.g. from My tasks): opens this task's details once the board has loaded.</summary>
+    [SupplyParameterFromQuery(Name = "task")] public Guid? OpenTaskId { get; set; }
+
+    private Guid? _pendingOpen;
+
     private bool HasFilters => _search.Length > 0 || _assigneeFilter.Length > 0 || _labelFilter.Length > 0;
 
     protected override async Task OnParametersSetAsync()
     {
         _currentUserId = (await AuthState.GetAuthenticationStateAsync()).User.UserId();
+        _pendingOpen = OpenTaskId;
         await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The dialog only exists once the board has rendered with data.
+        if (_pendingOpen is { } id && _tasks is not null && _taskDialog is not null)
+        {
+            _pendingOpen = null;
+            if (_tasks.FirstOrDefault(t => t.Id == id) is { } task)
+                await _taskDialog.OpenAsync(task);
+            else
+                Toasts.Error("That task no longer exists.");
+        }
     }
 
     private async Task LoadAsync()

@@ -17,6 +17,11 @@ public sealed class TasksController(TaskService tasks) : ControllerBase
         CancellationToken ct) =>
         tasks.ListAsync(projectId, new TaskFilter(status, assigneeId, labelId, search), ct);
 
+    /// <summary>Tasks assigned to the signed-in user across all of their projects.</summary>
+    [HttpGet("api/me/tasks")]
+    public Task<IReadOnlyList<MyTaskDto>> Mine([FromQuery] bool includeDone, CancellationToken ct) =>
+        tasks.ListMineAsync(includeDone, ct);
+
     [HttpPost("api/projects/{projectId:guid}/tasks")]
     public async Task<ActionResult<TaskDto>> Create(Guid projectId, CreateTaskRequest request, CancellationToken ct)
     {

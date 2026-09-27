@@ -37,6 +37,8 @@ public sealed class ApiClient(HttpClient http)
     public Task DeleteLabelAsync(Guid projectId, Guid labelId) => SendAsync(HttpMethod.Delete, $"api/projects/{projectId}/labels/{labelId}");
 
     // Tasks
+    public Task<List<MyTaskDto>> GetMyTasksAsync(bool includeDone) =>
+        SendAsync<List<MyTaskDto>>(HttpMethod.Get, $"api/me/tasks?includeDone={(includeDone ? "true" : "false")}");
     public Task<List<TaskDto>> GetTasksAsync(Guid projectId) => SendAsync<List<TaskDto>>(HttpMethod.Get, $"api/projects/{projectId}/tasks");
     public Task<TaskDto> CreateTaskAsync(Guid projectId, CreateTaskRequest request) =>
         SendAsync<TaskDto>(HttpMethod.Post, $"api/projects/{projectId}/tasks", request);

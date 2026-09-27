@@ -1,0 +1,174 @@
+@page "/my-tasks"
+@inject ApiClient Api
+@inject ToastService Toasts
+
+<PageTitle>My tasks · ZaneTask</PageTitle>
+
+<div class="container container--narrow">
+    <div class="page-header">
+        <div class="page-header__text">
+            <h1 class="page-title">My tasks</h1>
+            <p class="text-muted">Everything assigned to you, across all projects.</p>
+        </div>
+        <label class="toggle">
+            <input type="checkbox" checked="@_includeDone" @onchange="OnShowCompletedChanged" />
+            <span>Show completed</span>
+        </label>
+    </div>
+
+    @if (_loadError is not null)
+    {
+        <div class="notice notice--error" role="alert">
+            <Icon Name="alert" Size="18" /> <span>@_loadError</span>
+            <button type="button" class="btn btn--secondary btn--sm" @onclick="LoadAsync">Try again</button>
+        </div>
+    }
+    else if (_tasks is null)
+    {
+        <div class="page-loading" role="status"><span class="spinner" aria-hidden="true"></span> Loading your tasks…</div>
+    }
+    else if (_tasks.Count == 0)
+    {
+        <div class="empty-state card">
+            <Icon Name="circle-check" Size="40" />
+            <h2>@(_includeDone ? "Nothing assigned to you" : "You're all caught up")</h2>
+            <p class="text-muted">Tasks assigned to you in any project show up here, sorted by due date.</p>
+            <a class="btn btn--secondary" href="">Go to projects</a>
+        </div>
+    }
+    else
+    {
+        @foreach (var group in Groups())
+        {
+            <section class="task-group" aria-labelledby="group-@group.Key">
+                <h2 id="group-@group.Key" class="task-group__title @(group.Key == "overdue" ? "task-group__title--danger" : null)">
+                    @if (group.Key == "overdue")
+                    {
+                        <Icon Name="alert" />
+                    }
+                    @group.Title <span class="task-group__count">@group.Items.Count</span>
+                </h2>
+                <ul class="card task-list">
+                    @foreach (var item in group.Items)
+                    {
+                        var task = item.Task;
+                        var done = task.Status == TaskItemStatus.Done;
+                        <li class="task-row @(done ? "is-done" : null)" @key="task.Id">
+                            <button type="button" class="task-row__check status--@task.Status.ToString().ToLowerInvariant()"
+                                    aria-label="@(done ? $"Reopen “{task.Title}”" : $"Mark “{task.Title}” as done")"
+                                    disabled="@_busy.Contains(task.Id)" @onclick="() => ToggleDoneAsync(item)">
+                                <Icon Name="@task.Status.Icon()" Size="20" />
+                            </button>
+                            <div class="task-row__main">
+                                <a class="task-row__title" href="projects/@task.ProjectId?task=@task.Id">@task.Title</a>
+                                <div class="task-row__meta">
+                                    <span class="meta"><Icon Name="kanban" /> @item.ProjectName</span>
+                                    <span class="meta"><Icon Name="@task.Status.Icon()" /> @task.Status.Name()</span>
+                                    <PriorityBadge Priority="task.Priority" />
+                                    @if (task.DueDate is { } due)
+                                    {
+                                        var overdue = due < _today && !done;
+                                        <span class="meta @(overdue ? "meta--danger" : null)">
+                                            <Icon Name="@(overdue ? "alert" : "calendar")" /> @Display.DueText(due, _today)
+                                        </span>
+                                    }
+                                    @foreach (var label in task.Labels)
+                                    {
+                                        <LabelChip Label="label" @key="label.Id" />
+                                    }
+                                </div>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private List<MyTaskDto>? _tasks;
+    private string? _loadError;
+    private bool _includeDone;
+    private readonly HashSet<Guid> _busy = [];
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+
+    private sealed record Group(string Key, string Title, List<MyTaskDto> Items);
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loadError = null;
+        try
+        {
+            _tasks = await Api.GetMyTasksAsync(_includeDone);
+        }
+        catch (ApiException e)
+        {
+            _loadError = e.Message;
+        }
+    }
+
+    private async Task OnShowCompletedChanged(ChangeEventArgs e)
+    {
+        _includeDone = e.Value is true;
+        _tasks = null;
+        await LoadAsync();
+    }
+
+    /// <summary>Buckets by due date; the server already sorted by due date, then priority.</summary>
+    private IEnumerable<Group> Groups()
+    {
+        var weekEnd = _today.AddDays(7);
+        var groups = new[]
+        {
+            new Group("overdue", "Overdue", []),
+            new Group("today", "Today", []),
+            new Group("week", "Next 7 days", []),
+            new Group("later", "Later", []),
+            new Group("undated", "No due date", []),
+            new Group("done", "Completed", []),
+        };
+
+        foreach (var item in _tasks!)
+        {
+            var due = item.Task.DueDate;
+            var index = item.Task.Status == TaskItemStatus.Done ? 5
+                : due is null ? 4
+                : due < _today ? 0
+                : due == _today ? 1
+                : due <= weekEnd ? 2
+                : 3;
+            groups[index].Items.Add(item);
+        }
+
+        return groups.Where(g => g.Items.Count > 0);
+    }
+
+    private async Task ToggleDoneAsync(MyTaskDto item)
+    {
+        var task = item.Task;
+        var target = task.Status == TaskItemStatus.Done ? TaskItemStatus.Todo : TaskItemStatus.Done;
+        _busy.Add(task.Id);
+        try
+        {
+            // Append to the end of the target column on the board.
+            var moved = await Api.MoveTaskAsync(task.Id, target, int.MaxValue / 2);
+            var index = _tasks!.FindIndex(t => t.Task.Id == task.Id);
+            if (target == TaskItemStatus.Done && !_includeDone)
+                _tasks.RemoveAt(index);
+            else
+                _tasks[index] = item with { Task = moved };
+            Toasts.Success(target == TaskItemStatus.Done ? $"“{task.Title}” marked as done." : $"“{task.Title}” reopened.");
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+        finally
+        {
+            _busy.Remove(task.Id);
+        }
+    }
+}
