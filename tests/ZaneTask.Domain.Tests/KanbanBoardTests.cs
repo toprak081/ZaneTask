@@ -16,11 +16,14 @@ public class KanbanBoardTests
         _project = Project.Create("P", null, "PRJ", _owner, Now);
     }
 
+    /// <summary>The project's default column for a category (projects start with To do / In progress / Done).</summary>
+    private BoardColumn Col(TaskItemStatus category) => _project.DefaultColumn(category);
+
     private TaskItem Add(string title, TaskItemStatus status)
     {
         var task = TaskItem.Create(
-            _project, title, null, TaskType.Task, status, TaskPriority.Medium, null, null, _owner,
-            KanbanBoard.NextPosition(_tasks, status), Now);
+            _project, title, null, TaskType.Task, Col(status), TaskPriority.Medium, null, null, _owner,
+            KanbanBoard.NextPosition(_tasks, Col(status).Id), Now);
         _tasks.Add(task);
         return task;
     }
@@ -41,7 +44,7 @@ public class KanbanBoardTests
         Add("b", TaskItemStatus.Todo);
         var c = Add("c", TaskItemStatus.Done);
 
-        Assert.Equal(2, KanbanBoard.NextPosition(_tasks, TaskItemStatus.Todo));
+        Assert.Equal(2, KanbanBoard.NextPosition(_tasks, Col(TaskItemStatus.Todo).Id));
         Assert.Equal(0, c.Position);
     }
 
@@ -52,7 +55,7 @@ public class KanbanBoardTests
         Add("b", TaskItemStatus.Todo);
         var c = Add("c", TaskItemStatus.Todo);
 
-        KanbanBoard.Move(_tasks, c, TaskItemStatus.Todo, 0, Now);
+        KanbanBoard.Move(_tasks, c, Col(TaskItemStatus.Todo), 0, Now);
 
         Assert.Equal(["c", "a", "b"], Column(TaskItemStatus.Todo));
         AssertPositionsContiguous();
@@ -67,7 +70,7 @@ public class KanbanBoardTests
         Add("x", TaskItemStatus.InProgress);
         Add("y", TaskItemStatus.InProgress);
 
-        KanbanBoard.Move(_tasks, b, TaskItemStatus.InProgress, 1, Now.AddMinutes(1));
+        KanbanBoard.Move(_tasks, b, Col(TaskItemStatus.InProgress), 1, Now.AddMinutes(1));
 
         Assert.Equal(["a", "c"], Column(TaskItemStatus.Todo));
         Assert.Equal(["x", "b", "y"], Column(TaskItemStatus.InProgress));
@@ -82,7 +85,7 @@ public class KanbanBoardTests
         var a = Add("a", TaskItemStatus.Todo);
         Add("x", TaskItemStatus.Done);
 
-        KanbanBoard.Move(_tasks, a, TaskItemStatus.Done, 99, Now);
+        KanbanBoard.Move(_tasks, a, Col(TaskItemStatus.Done), 99, Now);
 
         Assert.Equal(["x", "a"], Column(TaskItemStatus.Done));
         Assert.Empty(Column(TaskItemStatus.Todo));
@@ -94,7 +97,7 @@ public class KanbanBoardTests
     {
         var a = Add("a", TaskItemStatus.Todo);
 
-        Assert.Throws<DomainException>(() => KanbanBoard.Move(_tasks, a, TaskItemStatus.Todo, -1, Now));
+        Assert.Throws<DomainException>(() => KanbanBoard.Move(_tasks, a, Col(TaskItemStatus.Todo), -1, Now));
     }
 
     [Fact]

@@ -16,7 +16,7 @@ public class TaskItemTests
     }
 
     private TaskItem NewTask(string title = "Task", Guid? assignee = null) =>
-        TaskItem.Create(_project, title, null, TaskType.Task, TaskItemStatus.Todo, TaskPriority.Medium, null, assignee, _owner, 0, Now);
+        TaskItem.Create(_project, title, null, TaskType.Task, _project.DefaultColumn(TaskItemStatus.Todo), TaskPriority.Medium, null, assignee, _owner, 0, Now);
 
     [Fact]
     public void Create_requires_a_title()

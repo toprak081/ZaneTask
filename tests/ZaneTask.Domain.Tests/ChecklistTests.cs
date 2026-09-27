@@ -13,7 +13,7 @@ public class ChecklistTests
     {
         var owner = Guid.NewGuid();
         var project = Project.Create("P", null, "PRJ", owner, Now);
-        _task = TaskItem.Create(project, "T", null, TaskType.Task, TaskItemStatus.Todo, TaskPriority.Medium, null, null, owner, 0, Now);
+        _task = TaskItem.Create(project, "T", null, TaskType.Task, project.DefaultColumn(TaskItemStatus.Todo), TaskPriority.Medium, null, null, owner, 0, Now);
     }
 
     private string[] Texts() => _task.Checklist.OrderBy(i => i.Position).Select(i => i.Text).ToArray();

@@ -31,7 +31,7 @@ public sealed class ProjectFlowTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal([label], task.Labels);
 
         // Bob picks it up on the board and comments.
-        var move = await bob.PutAsJsonAsync($"/api/tasks/{task.Id}/move", new MoveTaskRequest(TaskItemStatus.InProgress, 0), Json);
+        var move = await bob.PutAsJsonAsync($"/api/tasks/{task.Id}/move", new MoveTaskRequest(null, 0, TaskItemStatus.InProgress), Json);
         Assert.Equal(HttpStatusCode.OK, move.StatusCode);
 
         var comment = await PostAsync<CommentDto>(bob, $"/api/tasks/{task.Id}/comments", new SaveCommentRequest("On it"));

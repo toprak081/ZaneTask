@@ -84,6 +84,42 @@ public sealed class MigrationTests
             tasks);
     }
 
+    [Fact]
+    public void Upgrading_existing_data_creates_default_columns_and_places_tasks_by_status()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        using var db = SqliteContext(connection);
+        db.GetService<IMigrator>().Migrate("Checklist"); // the schema before board columns
+
+        var user = NewId();
+        var project = NewId();
+        Exec(connection, """
+            INSERT INTO "AspNetUsers" ("Id", "DisplayName", "EmailConfirmed", "PhoneNumberConfirmed", "TwoFactorEnabled", "LockoutEnabled", "AccessFailedCount")
+            VALUES ($user, 'Old User', 0, 0, 0, 0, 0);
+            INSERT INTO "Projects" ("Id", "Name", "Key", "NextTaskNumber", "CreatedAt") VALUES ($project, 'Old', 'OLD', 4, '2026-01-01 00:00:00');
+            """, ("$user", user), ("$project", project));
+        var number = 1;
+        foreach (var (title, status) in new[] { ("todo", "Todo"), ("doing", "InProgress"), ("done", "Done") })
+        {
+            Exec(connection, """
+                INSERT INTO "Tasks" ("Id", "ProjectId", "Number", "Type", "Title", "Status", "Priority", "Position", "CreatedById", "CreatedAt", "UpdatedAt")
+                VALUES ($id, $project, $number, 'Task', $title, $status, 'Medium', 0, $user, '2026-01-02 00:00:00', '2026-01-02 00:00:00');
+                """, ("$id", NewId()), ("$project", project), ("$number", (number++).ToString()), ("$title", title), ("$status", status), ("$user", user));
+        }
+
+        db.Database.Migrate();
+
+        var loaded = db.Projects.Include(p => p.Columns).Single();
+        Assert.Equal(
+            [("To do", Domain.Tasks.TaskItemStatus.Todo), ("In progress", Domain.Tasks.TaskItemStatus.InProgress), ("Done", Domain.Tasks.TaskItemStatus.Done)],
+            loaded.OrderedColumns.Select(c => (c.Name, c.Category)));
+
+        var columnNames = loaded.Columns.ToDictionary(c => c.Id, c => c.Name);
+        var placement = db.Tasks.OrderBy(t => t.Number).AsEnumerable().Select(t => (t.Title, columnNames[t.ColumnId])).ToList();
+        Assert.Equal([("todo", "To do"), ("doing", "In progress"), ("done", "Done")], placement);
+    }
+
     private static AppDbContext SqliteContext(SqliteConnection connection) =>
         new(new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlite(connection, sqlite => sqlite.MigrationsAssembly(ZaneTask.Infrastructure.DependencyInjection.SqliteMigrationsAssembly))

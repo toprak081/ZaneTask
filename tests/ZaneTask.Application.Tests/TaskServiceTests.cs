@@ -132,7 +132,7 @@ public sealed class TaskServiceTests : IDisposable
         await CreateAsync("x", TaskItemStatus.InProgress);
 
         _t.ActAs(_bob);
-        var moved = await _t.Tasks.MoveAsync(b.Id, new(TaskItemStatus.InProgress, 0), default);
+        var moved = await _t.Tasks.MoveAsync(b.Id, new(null, 0, TaskItemStatus.InProgress), default);
         Assert.Equal(TaskItemStatus.InProgress, moved.Status);
 
         _t.ActAs(_alice);

@@ -158,6 +158,34 @@ namespace ZaneTask.Infrastructure.Sqlite.Migrations
                     b.ToTable("TaskLabels");
                 });
 
+            modelBuilder.Entity("ZaneTask.Domain.Projects.BoardColumn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "Position");
+
+                    b.ToTable("BoardColumns", (string)null);
+                });
+
             modelBuilder.Entity("ZaneTask.Domain.Projects.Label", b =>
                 {
                     b.Property<Guid>("Id")
@@ -309,6 +337,9 @@ namespace ZaneTask.Infrastructure.Sqlite.Migrations
                     b.Property<Guid?>("AssigneeId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("ColumnId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -360,10 +391,12 @@ namespace ZaneTask.Infrastructure.Sqlite.Migrations
 
                     b.HasIndex("CreatedById");
 
+                    b.HasIndex("ColumnId", "Position");
+
                     b.HasIndex("ProjectId", "Number")
                         .IsUnique();
 
-                    b.HasIndex("ProjectId", "Status", "Position");
+                    b.HasIndex("ProjectId", "Status");
 
                     b.ToTable("Tasks", (string)null);
                 });
@@ -504,6 +537,15 @@ namespace ZaneTask.Infrastructure.Sqlite.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ZaneTask.Domain.Projects.BoardColumn", b =>
+                {
+                    b.HasOne("ZaneTask.Domain.Projects.Project", null)
+                        .WithMany("Columns")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ZaneTask.Domain.Projects.Label", b =>
                 {
                     b.HasOne("ZaneTask.Domain.Projects.Project", null)
@@ -559,6 +601,12 @@ namespace ZaneTask.Infrastructure.Sqlite.Migrations
                         .HasForeignKey("AssigneeId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("ZaneTask.Domain.Projects.BoardColumn", null)
+                        .WithMany()
+                        .HasForeignKey("ColumnId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
                     b.HasOne("ZaneTask.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("CreatedById")
@@ -574,6 +622,8 @@ namespace ZaneTask.Infrastructure.Sqlite.Migrations
 
             modelBuilder.Entity("ZaneTask.Domain.Projects.Project", b =>
                 {
+                    b.Navigation("Columns");
+
                     b.Navigation("Labels");
 
                     b.Navigation("Members");
