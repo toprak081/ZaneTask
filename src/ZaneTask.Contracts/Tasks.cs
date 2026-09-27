@@ -42,7 +42,9 @@ public sealed record TaskDto(
     DateTime CreatedAt,
     DateTime UpdatedAt,
     IReadOnlyList<LabelDto> Labels,
-    int CommentCount);
+    int CommentCount,
+    int ChecklistDone,
+    int ChecklistTotal);
 
 /// <summary>A task assigned to the current user, with the name of the project it belongs to.</summary>
 public sealed record MyTaskDto(TaskDto Task, string ProjectName);
@@ -77,5 +79,14 @@ public sealed record CommentDto(
     string Body,
     DateTime CreatedAt,
     DateTime? EditedAt);
+
+public sealed record ChecklistItemDto(Guid Id, string Text, bool IsDone, int Position);
+
+public sealed record AddChecklistItemRequest([Required, MaxLength(300)] string Text);
+
+/// <summary>Null fields are left unchanged.</summary>
+public sealed record UpdateChecklistItemRequest([MaxLength(300)] string? Text = null, bool? IsDone = null);
+
+public sealed record MoveChecklistItemRequest([Range(0, int.MaxValue)] int Position);
 
 public sealed record SaveCommentRequest([Required, MaxLength(4000)] string Body);

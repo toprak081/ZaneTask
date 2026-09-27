@@ -51,6 +51,18 @@ public sealed class ApiClient(HttpClient http)
     public Task<TaskDto> AddTaskLabelAsync(Guid taskId, Guid labelId) => SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/labels/{labelId}");
     public Task<TaskDto> RemoveTaskLabelAsync(Guid taskId, Guid labelId) => SendAsync<TaskDto>(HttpMethod.Delete, $"api/tasks/{taskId}/labels/{labelId}");
 
+    // Checklist (every change returns the whole list)
+    public Task<List<ChecklistItemDto>> GetChecklistAsync(Guid taskId) =>
+        SendAsync<List<ChecklistItemDto>>(HttpMethod.Get, $"api/tasks/{taskId}/checklist");
+    public Task<List<ChecklistItemDto>> AddChecklistItemAsync(Guid taskId, string text) =>
+        SendAsync<List<ChecklistItemDto>>(HttpMethod.Post, $"api/tasks/{taskId}/checklist", new AddChecklistItemRequest(text));
+    public Task<List<ChecklistItemDto>> UpdateChecklistItemAsync(Guid itemId, UpdateChecklistItemRequest request) =>
+        SendAsync<List<ChecklistItemDto>>(HttpMethod.Put, $"api/checklist/{itemId}", request);
+    public Task<List<ChecklistItemDto>> MoveChecklistItemAsync(Guid itemId, int position) =>
+        SendAsync<List<ChecklistItemDto>>(HttpMethod.Put, $"api/checklist/{itemId}/move", new MoveChecklistItemRequest(position));
+    public Task<List<ChecklistItemDto>> DeleteChecklistItemAsync(Guid itemId) =>
+        SendAsync<List<ChecklistItemDto>>(HttpMethod.Delete, $"api/checklist/{itemId}");
+
     // Comments
     public Task<List<CommentDto>> GetCommentsAsync(Guid taskId) => SendAsync<List<CommentDto>>(HttpMethod.Get, $"api/tasks/{taskId}/comments");
     public Task<CommentDto> AddCommentAsync(Guid taskId, string body) =>

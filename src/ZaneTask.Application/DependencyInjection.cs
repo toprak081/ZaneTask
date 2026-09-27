@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectService>();
         services.AddScoped<TaskService>();
         services.AddScoped<CommentService>();
+        services.AddScoped<ChecklistService>();
         return services;
     }
 }

@@ -1,0 +1,167 @@
+@inject ApiClient Api
+@inject ToastService Toasts
+
+@* A task's checklist. Changes are saved immediately; up/down buttons are the keyboard/touch alternative to dragging. *@
+<section class="checklist" aria-labelledby="checklist-heading-@TaskId">
+    <div class="checklist__header">
+        <h3 id="checklist-heading-@TaskId" class="checklist__title"><Icon Name="square-check" /> Checklist</h3>
+        @if (_items is { Count: > 0 })
+        {
+            <span class="checklist__count @(Done == _items.Count ? "is-complete" : null)">@Done/@_items.Count</span>
+        }
+    </div>
+
+    @if (_items is { Count: > 0 })
+    {
+        <div class="checklist__progress" role="progressbar" aria-label="Checklist progress"
+             aria-valuemin="0" aria-valuemax="@_items.Count" aria-valuenow="@Done">
+            <span style="width: @(Done * 100 / _items.Count)%"></span>
+        </div>
+    }
+
+    @if (_items is null)
+    {
+        <p class="text-muted" role="status"><span class="spinner spinner--sm" aria-hidden="true"></span> Loading checklist…</p>
+    }
+    else
+    {
+        <ul class="checklist__list">
+            @foreach (var item in _items)
+            {
+                var inputId = $"check-{item.Id}";
+                <li class="checklist__item @(item.IsDone ? "is-done" : null)" @key="item.Id">
+                    @if (_editingId == item.Id)
+                    {
+                        <label class="sr-only" for="edit-@inputId">Edit checklist item</label>
+                        <input id="edit-@inputId" class="input input--sm checklist__edit" maxlength="300" @bind="_editText"
+                               @onkeydown="e => OnEditKeyDown(e, item)" />
+                        <button type="button" class="btn btn--primary btn--sm" disabled="@(_busy || string.IsNullOrWhiteSpace(_editText))"
+                                @onclick="() => SaveEditAsync(item)">Save</button>
+                        <button type="button" class="btn btn--ghost btn--sm" @onclick="() => _editingId = null">Cancel</button>
+                    }
+                    else
+                    {
+                        <input id="@inputId" type="checkbox" class="checklist__check" checked="@item.IsDone" disabled="@_busy"
+                               @onchange="e => ToggleAsync(item, e.Value is true)" />
+                        <label for="@inputId" class="checklist__text">@item.Text</label>
+                        <span class="checklist__actions">
+                            <button type="button" class="btn btn--icon btn--ghost btn--sm" aria-label="Move “@item.Text” up"
+                                    disabled="@(_busy || item.Position == 0)" @onclick="() => MoveAsync(item, item.Position - 1)">
+                                <Icon Name="chevron-up" />
+                            </button>
+                            <button type="button" class="btn btn--icon btn--ghost btn--sm" aria-label="Move “@item.Text” down"
+                                    disabled="@(_busy || item.Position == _items.Count - 1)" @onclick="() => MoveAsync(item, item.Position + 1)">
+                                <Icon Name="chevron-down" />
+                            </button>
+                            <button type="button" class="btn btn--icon btn--ghost btn--sm" aria-label="Edit “@item.Text”"
+                                    disabled="@_busy" @onclick="() => StartEdit(item)">
+                                <Icon Name="pencil" />
+                            </button>
+                            <button type="button" class="btn btn--icon btn--danger-ghost btn--sm" aria-label="Delete “@item.Text”"
+                                    disabled="@_busy" @onclick="() => DeleteAsync(item)">
+                                <Icon Name="trash" />
+                            </button>
+                        </span>
+                    }
+                </li>
+            }
+        </ul>
+
+        <form class="checklist__add" @onsubmit="AddAsync">
+            <label class="sr-only" for="new-check-@TaskId">Add a checklist item</label>
+            <input id="new-check-@TaskId" class="input input--sm" maxlength="300" placeholder="Add an item and press Enter"
+                   autocomplete="off" @bind="_newText" @bind:event="oninput" @ref="_newInput" />
+            <button type="submit" class="btn btn--secondary btn--sm" disabled="@(_busy || string.IsNullOrWhiteSpace(_newText))">
+                <Icon Name="plus" /> Add
+            </button>
+        </form>
+    }
+</section>
+
+@code {
+    private List<ChecklistItemDto>? _items;
+    private string _newText = "";
+    private Guid? _editingId;
+    private string _editText = "";
+    private bool _busy;
+    private ElementReference _newInput;
+
+    [Parameter, EditorRequired] public Guid TaskId { get; set; }
+
+    /// <summary>Raised after any change so the board can refresh the card's progress.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private int Done => _items?.Count(i => i.IsDone) ?? 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _items = null;
+        _editingId = null;
+        _newText = "";
+        await RunAsync(() => Api.GetChecklistAsync(TaskId), notify: false);
+    }
+
+    private async Task AddAsync()
+    {
+        var text = _newText.Trim();
+        if (text.Length == 0)
+            return;
+        if (await RunAsync(() => Api.AddChecklistItemAsync(TaskId, text)))
+        {
+            _newText = "";
+            await _newInput.FocusAsync(); // keep typing the next item
+        }
+    }
+
+    private Task ToggleAsync(ChecklistItemDto item, bool done) =>
+        RunAsync(() => Api.UpdateChecklistItemAsync(item.Id, new UpdateChecklistItemRequest(IsDone: done)));
+
+    private Task MoveAsync(ChecklistItemDto item, int position) =>
+        RunAsync(() => Api.MoveChecklistItemAsync(item.Id, position));
+
+    private Task DeleteAsync(ChecklistItemDto item) =>
+        RunAsync(() => Api.DeleteChecklistItemAsync(item.Id));
+
+    private void StartEdit(ChecklistItemDto item)
+    {
+        _editingId = item.Id;
+        _editText = item.Text;
+    }
+
+    private async Task SaveEditAsync(ChecklistItemDto item)
+    {
+        if (await RunAsync(() => Api.UpdateChecklistItemAsync(item.Id, new UpdateChecklistItemRequest(Text: _editText.Trim()))))
+            _editingId = null;
+    }
+
+    private async Task OnEditKeyDown(KeyboardEventArgs e, ChecklistItemDto item)
+    {
+        if (e.Key == "Enter")
+            await SaveEditAsync(item);
+        else if (e.Key == "Escape")
+            _editingId = null;
+    }
+
+    /// <summary>Runs an API call that returns the whole checklist and shows it. Returns false on failure.</summary>
+    private async Task<bool> RunAsync(Func<Task<List<ChecklistItemDto>>> call, bool notify = true)
+    {
+        _busy = true;
+        try
+        {
+            _items = await call();
+            if (notify)
+                await OnChanged.InvokeAsync();
+            return true;
+        }
+        catch (ApiException e)
+        {
+            _items ??= [];
+            Toasts.Error(e.Message);
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

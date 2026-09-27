@@ -27,12 +27,14 @@ public sealed class TestDatabase : IDisposable
         Projects = new ProjectService(Db, _currentUser, users, clock);
         Tasks = new TaskService(Db, _currentUser, users, clock);
         Comments = new CommentService(Db, _currentUser, users, clock);
+        Checklist = new ChecklistService(Db, _currentUser, clock);
     }
 
     public AppDbContext Db { get; }
     public ProjectService Projects { get; }
     public TaskService Tasks { get; }
     public CommentService Comments { get; }
+    public ChecklistService Checklist { get; }
 
     /// <summary>A separate context on the same database, for checking what was actually persisted.</summary>
     public AppDbContext NewContext() =>

@@ -52,6 +52,12 @@
                 <Icon Name="@(overdue ? "alert" : "calendar")" /> @Display.DueText(due, Today)
             </span>
         }
+        @if (Item.ChecklistTotal > 0)
+        {
+            <span class="meta @(Item.ChecklistDone == Item.ChecklistTotal ? "meta--success" : null)" title="Checklist">
+                <Icon Name="square-check" /> @Item.ChecklistDone/@Item.ChecklistTotal <span class="sr-only">checklist items done</span>
+            </span>
+        }
         @if (Item.CommentCount > 0)
         {
             <span class="meta" title="Comments">

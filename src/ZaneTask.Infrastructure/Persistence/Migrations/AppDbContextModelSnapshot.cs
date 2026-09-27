@@ -250,6 +250,35 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectMembers", (string)null);
                 });
 
+            modelBuilder.Entity("ZaneTask.Domain.Tasks.ChecklistItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDone")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId", "Position");
+
+                    b.ToTable("ChecklistItems", (string)null);
+                });
+
             modelBuilder.Entity("ZaneTask.Domain.Tasks.Comment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -508,6 +537,15 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ZaneTask.Domain.Tasks.ChecklistItem", b =>
+                {
+                    b.HasOne("ZaneTask.Domain.Tasks.TaskItem", null)
+                        .WithMany("Checklist")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ZaneTask.Domain.Tasks.Comment", b =>
                 {
                     b.HasOne("ZaneTask.Infrastructure.Identity.ApplicationUser", null)
@@ -552,6 +590,8 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ZaneTask.Domain.Tasks.TaskItem", b =>
                 {
+                    b.Navigation("Checklist");
+
                     b.Navigation("Comments");
                 });
 #pragma warning restore 612, 618

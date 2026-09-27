@@ -83,6 +83,8 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(t => t.CreatedById).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasMany(t => t.Comments).WithOne().HasForeignKey(c => c.TaskId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(t => t.Checklist).WithOne().HasForeignKey(c => c.TaskId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(t => t.Checklist).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Navigation(t => t.Comments).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasMany(t => t.Labels).WithMany().UsingEntity(
@@ -90,6 +92,18 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
             r => r.HasOne(typeof(Label)).WithMany().HasForeignKey("LabelId").OnDelete(DeleteBehavior.Cascade),
             l => l.HasOne(typeof(TaskItem)).WithMany().HasForeignKey("TaskId").OnDelete(DeleteBehavior.Cascade));
         builder.Navigation(t => t.Labels).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal sealed class ChecklistItemConfiguration : IEntityTypeConfiguration<ChecklistItem>
+{
+    public void Configure(EntityTypeBuilder<ChecklistItem> builder)
+    {
+        builder.ToTable("ChecklistItems");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Id).ValueGeneratedNever();
+        builder.Property(c => c.Text).HasMaxLength(ChecklistItem.TextMaxLength).IsRequired();
+        builder.HasIndex(c => new { c.TaskId, c.Position });
     }
 }
 

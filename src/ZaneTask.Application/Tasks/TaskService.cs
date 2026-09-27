@@ -61,7 +61,7 @@ public sealed partial class TaskService(
         }
 
         var rows = await query
-            .Select(t => new TaskRow(t, t.Labels.ToList(), t.Comments.Count()))
+            .Select(t => new TaskRow(t, t.Labels.ToList(), t.Comments.Count(), t.Checklist.Count(c => c.IsDone), t.Checklist.Count()))
             .ToListAsync(ct);
 
         // Status is stored as text, so order by the enum value in memory rather than alphabetically in SQL.
@@ -83,7 +83,7 @@ public sealed partial class TaskService(
             query = query.Where(t => t.Status != Domain.Tasks.TaskItemStatus.Done);
 
         var rows = await query
-            .Select(t => new TaskRow(t, t.Labels.ToList(), t.Comments.Count()))
+            .Select(t => new TaskRow(t, t.Labels.ToList(), t.Comments.Count(), t.Checklist.Count(c => c.IsDone), t.Checklist.Count()))
             .ToListAsync(ct);
 
         var projectIds = rows.Select(r => r.Task.ProjectId).Distinct().ToList();
@@ -223,7 +223,10 @@ public sealed partial class TaskService(
     private async Task<TaskDto> ToDtoAsync(TaskItem task, CancellationToken ct)
     {
         var commentCount = await db.Comments.CountAsync(c => c.TaskId == task.Id, ct);
-        var dtos = await ToDtosAsync([new TaskRow(task, task.Labels.ToList(), commentCount)], ct);
+        var checklist = await db.Tasks.Where(t => t.Id == task.Id)
+            .Select(t => new { Done = t.Checklist.Count(c => c.IsDone), Total = t.Checklist.Count() })
+            .SingleAsync(ct);
+        var dtos = await ToDtosAsync([new TaskRow(task, task.Labels.ToList(), commentCount, checklist.Done, checklist.Total)], ct);
         return dtos[0];
     }
 
@@ -257,11 +260,14 @@ public sealed partial class TaskService(
                 r.Task.CreatedAt,
                 r.Task.UpdatedAt,
                 r.Labels.OrderBy(l => l.Name).Select(l => l.ToDto()).ToList(),
-                r.CommentCount))
+                r.CommentCount,
+                r.ChecklistDone,
+                r.ChecklistTotal))
             .ToList();
     }
 
-    private sealed record TaskRow(TaskItem Task, List<Domain.Projects.Label> Labels, int CommentCount);
+    private sealed record TaskRow(
+        TaskItem Task, List<Domain.Projects.Label> Labels, int CommentCount, int ChecklistDone, int ChecklistTotal);
 
     [GeneratedRegex(@"^(?<project>[A-Za-z][A-Za-z0-9]*)-(?<number>\d{1,9})$")]
     private static partial Regex TaskKeyRegex();

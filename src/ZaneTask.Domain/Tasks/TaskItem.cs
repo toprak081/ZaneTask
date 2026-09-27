@@ -7,9 +7,11 @@ public class TaskItem : Entity
 {
     public const int TitleMaxLength = 200;
     public const int DescriptionMaxLength = 10000;
+    public const int ChecklistMaxItems = 100;
 
     private readonly List<Comment> _comments = [];
     private readonly List<Label> _labels = [];
+    private readonly List<ChecklistItem> _checklist = [];
 
     private TaskItem()
     {
@@ -38,6 +40,9 @@ public class TaskItem : Entity
 
     public IReadOnlyCollection<Comment> Comments => _comments;
     public IReadOnlyCollection<Label> Labels => _labels;
+
+    /// <summary>Checklist steps; load them before calling the checklist methods.</summary>
+    public IReadOnlyCollection<ChecklistItem> Checklist => _checklist;
 
     /// <param name="project">Project the task belongs to; must include its members. Its task counter is advanced.</param>
     /// <param name="position">Position inside the status column; see <see cref="KanbanBoard.NextPosition"/>.</param>
@@ -116,6 +121,68 @@ public class TaskItem : Entity
     }
 
     public void RemoveLabel(Guid labelId) => _labels.RemoveAll(l => l.Id == labelId);
+
+    public ChecklistItem AddChecklistItem(string text, DateTime now)
+    {
+        if (_checklist.Count >= ChecklistMaxItems)
+            throw new DomainException($"A checklist can have at most {ChecklistMaxItems} items.");
+
+        var item = new ChecklistItem(Id, text, _checklist.Count);
+        _checklist.Add(item);
+        UpdatedAt = now;
+        return item;
+    }
+
+    public ChecklistItem RenameChecklistItem(Guid itemId, string text, DateTime now)
+    {
+        var item = GetChecklistItem(itemId);
+        item.Rename(text);
+        UpdatedAt = now;
+        return item;
+    }
+
+    public ChecklistItem SetChecklistItemDone(Guid itemId, bool done, DateTime now)
+    {
+        var item = GetChecklistItem(itemId);
+        if (item.IsDone != done)
+        {
+            item.SetDone(done, now);
+            UpdatedAt = now;
+        }
+        return item;
+    }
+
+    /// <summary>Moves an item to <paramref name="position"/> (clamped) and renumbers the rest.</summary>
+    public void MoveChecklistItem(Guid itemId, int position, DateTime now)
+    {
+        if (position < 0)
+            throw new DomainException("Position cannot be negative.");
+
+        var item = GetChecklistItem(itemId);
+        var ordered = OrderedChecklist().Where(i => i != item).ToList();
+        ordered.Insert(Math.Min(position, ordered.Count), item);
+        Renumber(ordered);
+        UpdatedAt = now;
+    }
+
+    public void RemoveChecklistItem(Guid itemId, DateTime now)
+    {
+        _checklist.Remove(GetChecklistItem(itemId));
+        Renumber(OrderedChecklist().ToList());
+        UpdatedAt = now;
+    }
+
+    private IEnumerable<ChecklistItem> OrderedChecklist() => _checklist.OrderBy(i => i.Position);
+
+    private static void Renumber(List<ChecklistItem> items)
+    {
+        for (var i = 0; i < items.Count; i++)
+            items[i].Position = i;
+    }
+
+    private ChecklistItem GetChecklistItem(Guid itemId) =>
+        _checklist.FirstOrDefault(i => i.Id == itemId)
+        ?? throw new DomainException("Checklist item does not belong to this task.");
 
     private static void EnsureAssignable(Project project, Guid? assigneeId)
     {

@@ -75,6 +75,12 @@
                                             <Icon Name="@(overdue ? "alert" : "calendar")" /> @Display.DueText(due, _today)
                                         </span>
                                     }
+                                    @if (task.ChecklistTotal > 0)
+                                    {
+                                        <span class="meta @(task.ChecklistDone == task.ChecklistTotal ? "meta--success" : null)">
+                                            <Icon Name="square-check" /> @task.ChecklistDone/@task.ChecklistTotal <span class="sr-only">checklist items done</span>
+                                        </span>
+                                    }
                                     @foreach (var label in task.Labels)
                                     {
                                         <LabelChip Label="label" @key="label.Id" />

@@ -3,6 +3,7 @@
 
 <Dialog @ref="_dialog" Title="@(_task is null ? "New task" : _task.Key)" Wide="true" OnClosed="OnDialogClosed">
     <div class="task-dialog @(_task is null ? "task-dialog--new" : null)">
+        <div class="task-dialog__main">
         <EditForm Model="_form" OnValidSubmit="SaveAsync" OnInvalidSubmit="() => _errors.Focus()" FormName="task" class="form">
             <DataAnnotationsValidator />
             <FormErrors @ref="_errors" />
@@ -104,6 +105,12 @@
                 <SubmitButton Busy="_busy">@(_task is null ? "Create task" : "Save changes")</SubmitButton>
             </div>
         </EditForm>
+
+        @if (_task is not null)
+        {
+            <ChecklistEditor TaskId="_task.Id" OnChanged="() => _changed = true" />
+        }
+        </div>
 
         @if (_task is not null)
         {
@@ -241,6 +248,10 @@
             _comments = [];
             Toasts.Error(e.Message);
         }
+
+        // OpenAsync is also called outside of an event handler (deep links from My tasks),
+        // where Blazor does not re-render automatically after the await.
+        StateHasChanged();
     }
 
     private void ToggleLabel(Guid id)

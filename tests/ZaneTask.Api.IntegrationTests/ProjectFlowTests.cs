@@ -53,6 +53,26 @@ public sealed class ProjectFlowTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task Checklist_round_trip_over_http()
+    {
+        var (alice, _) = await factory.RegisterAsync("Alice");
+        var project = await PostAsync<ProjectDto>(alice, "/api/projects", new CreateProjectRequest("P", null));
+        var task = await PostAsync<TaskDto>(alice, $"/api/projects/{project.Id}/tasks", new CreateTaskRequest("T", null));
+
+        await PostAsync<List<ChecklistItemDto>>(alice, $"/api/tasks/{task.Id}/checklist", new AddChecklistItemRequest("one"));
+        var items = await PostAsync<List<ChecklistItemDto>>(alice, $"/api/tasks/{task.Id}/checklist", new AddChecklistItemRequest("two"));
+
+        var toggled = await alice.PutAsJsonAsync($"/api/checklist/{items[1].Id}", new UpdateChecklistItemRequest(IsDone: true), Json);
+        Assert.Equal(HttpStatusCode.OK, toggled.StatusCode);
+
+        var reloaded = await alice.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", Json);
+        Assert.Equal((1, 2), (reloaded!.ChecklistDone, reloaded.ChecklistTotal));
+
+        var blank = await alice.PostAsJsonAsync($"/api/tasks/{task.Id}/checklist", new AddChecklistItemRequest(""), Json);
+        Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+    }
+
+    [Fact]
     public async Task Business_rule_violations_are_bad_requests()
     {
         var (alice, _) = await factory.RegisterAsync("Alice");
