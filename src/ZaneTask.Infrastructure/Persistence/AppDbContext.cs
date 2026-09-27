@@ -16,6 +16,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<Label> Labels => Set<Label>();
+    public DbSet<TaskActivity> TaskActivities => Set<TaskActivity>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

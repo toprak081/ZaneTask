@@ -17,6 +17,7 @@ internal static class Mapping
     public static Dto.TaskItemStatus ToDto(this TaskItemStatus value) => (Dto.TaskItemStatus)(int)value;
     public static Dto.TaskPriority ToDto(this TaskPriority value) => (Dto.TaskPriority)(int)value;
     public static Dto.TaskType ToDto(this TaskType value) => (Dto.TaskType)(int)value;
+    public static Dto.TaskActivityKind ToDto(this TaskActivityKind value) => (Dto.TaskActivityKind)(int)value;
 
     public static Dto.LabelDto ToDto(this Label label) => new(label.Id, label.Name, label.Color);
 

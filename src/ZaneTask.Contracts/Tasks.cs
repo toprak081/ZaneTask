@@ -87,6 +87,18 @@ public sealed record CommentDto(
     DateTime CreatedAt,
     DateTime? EditedAt);
 
+public enum TaskActivityKind
+{
+    Created, TitleChanged, DescriptionChanged, TypeChanged, PriorityChanged, DueDateChanged,
+    AssigneeChanged, Moved, LabelAdded, LabelRemoved, ChecklistItemCompleted, ChecklistItemReopened,
+}
+
+/// <summary>
+/// One history entry. Values are display text (column/label names, user names, types, priorities);
+/// dates are ISO yyyy-MM-dd. A null value means "none" (e.g. unassigned, no due date).
+/// </summary>
+public sealed record TaskActivityDto(Guid Id, UserDto Actor, TaskActivityKind Kind, string? OldValue, string? NewValue, DateTime At);
+
 public sealed record ChecklistItemDto(Guid Id, string Text, bool IsDone, int Position);
 
 public sealed record AddChecklistItemRequest([Required, MaxLength(300)] string Text);

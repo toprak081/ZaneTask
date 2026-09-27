@@ -34,6 +34,11 @@ public sealed class TasksController(TaskService tasks) : ControllerBase
     [HttpGet("api/tasks/{taskId:guid}")]
     public Task<TaskDto> Get(Guid taskId, CancellationToken ct) => tasks.GetAsync(taskId, ct);
 
+    /// <summary>History of a task, newest first.</summary>
+    [HttpGet("api/tasks/{taskId:guid}/activity")]
+    public Task<IReadOnlyList<TaskActivityDto>> Activity(Guid taskId, CancellationToken ct) =>
+        tasks.ListActivityAsync(taskId, ct);
+
     [HttpPut("api/tasks/{taskId:guid}")]
     public Task<TaskDto> Update(Guid taskId, UpdateTaskRequest request, CancellationToken ct) =>
         tasks.UpdateAsync(taskId, request, ct);

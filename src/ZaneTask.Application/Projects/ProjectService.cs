@@ -7,6 +7,8 @@ using ZaneTask.Domain.Projects;
 using ZaneTask.Domain.Tasks;
 using DomainStatus = ZaneTask.Domain.Tasks.TaskItemStatus;
 
+using ZaneTask.Application.Tasks;
+using TaskActivityKind = ZaneTask.Domain.Tasks.TaskActivityKind;
 namespace ZaneTask.Application.Projects;
 
 public sealed class ProjectService(
@@ -143,6 +145,9 @@ public sealed class ProjectService(
             throw new DomainException("Choose another column to move this column's tasks to.");
 
         var projectTasks = await db.Tasks.Where(t => t.ProjectId == projectId).ToListAsync(ct);
+        var removedName = project.GetColumn(columnId).Name;
+        foreach (var task in projectTasks.Where(t => t.ColumnId == columnId))
+            db.Record(task.Id, Me, TaskActivityKind.Moved, Now, removedName, target.Name);
         KanbanBoard.MoveAll(projectTasks, columnId, target, Now);
         project.RemoveColumn(columnId);
 
@@ -192,7 +197,10 @@ public sealed class ProjectService(
             .Where(t => t.ProjectId == projectId && t.AssigneeId == userId)
             .ToListAsync(ct);
         foreach (var task in assigned)
+        {
             task.Assign(project, null, Now);
+            db.Record(task.Id, Me, TaskActivityKind.AssigneeChanged, Now, userId.ToString(), null);
+        }
 
         await db.SaveChangesAsync(ct);
     }

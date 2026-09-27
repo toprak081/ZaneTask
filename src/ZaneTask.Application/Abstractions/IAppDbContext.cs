@@ -11,6 +11,7 @@ public interface IAppDbContext
     DbSet<TaskItem> Tasks { get; }
     DbSet<Comment> Comments { get; }
     DbSet<Label> Labels { get; }
+    DbSet<TaskActivity> TaskActivities { get; }
 
     /// <summary>Used to discard pending changes before retrying an operation.</summary>
     ChangeTracker ChangeTracker { get; }

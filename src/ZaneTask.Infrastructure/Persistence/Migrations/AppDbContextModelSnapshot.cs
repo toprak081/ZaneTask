@@ -338,6 +338,42 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
                     b.ToTable("Comments", (string)null);
                 });
 
+            modelBuilder.Entity("ZaneTask.Domain.Tasks.TaskActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("TaskId", "At");
+
+                    b.ToTable("TaskActivities", (string)null);
+                });
+
             modelBuilder.Entity("ZaneTask.Domain.Tasks.TaskItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -598,6 +634,21 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
 
                     b.HasOne("ZaneTask.Domain.Tasks.TaskItem", null)
                         .WithMany("Comments")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ZaneTask.Domain.Tasks.TaskActivity", b =>
+                {
+                    b.HasOne("ZaneTask.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ZaneTask.Domain.Tasks.TaskItem", null)
+                        .WithMany()
                         .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

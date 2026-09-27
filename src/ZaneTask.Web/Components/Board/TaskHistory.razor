@@ -1,0 +1,78 @@
+@inject ApiClient Api
+
+@* A task's history, newest first. Each entry reads as a sentence: "Alice moved the task from To do to Review". *@
+@if (_entries is null)
+{
+    <p class="text-muted" role="status"><span class="spinner spinner--sm" aria-hidden="true"></span> Loading history…</p>
+}
+else if (_error is not null)
+{
+    <p class="notice notice--error" role="alert"><Icon Name="alert" /> @_error</p>
+}
+else if (_entries.Count == 0)
+{
+    <p class="text-muted">No history yet. Changes made from now on are recorded here.</p>
+}
+else
+{
+    <ol class="history">
+        @foreach (var entry in _entries)
+        {
+            <li class="history__item" @key="entry.Id">
+                <Avatar User="entry.Actor" Small="true" />
+                <p class="history__text">
+                    <strong>@entry.Actor.DisplayName</strong> @Describe(entry)
+                    <time class="history__time" datetime="@entry.At.ToString("O")" title="@entry.At.ToLocalTime().ToString("f")">
+                        · @Display.RelativeTime(entry.At, DateTime.UtcNow)
+                    </time>
+                </p>
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    private List<TaskActivityDto>? _entries;
+    private string? _error;
+
+    [Parameter, EditorRequired] public Guid TaskId { get; set; }
+
+    /// <summary>Changes whenever the dialog saves something, so the list is reloaded.</summary>
+    [Parameter] public int Version { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _error = null;
+        try
+        {
+            _entries = await Api.GetTaskActivityAsync(TaskId);
+        }
+        catch (ApiException e)
+        {
+            _entries = [];
+            _error = e.Message;
+        }
+    }
+
+    private static RenderFragment Describe(TaskActivityDto e) => e.Kind switch
+    {
+        TaskActivityKind.Created => @<text>created the task</text>,
+        TaskActivityKind.TitleChanged => @<text>renamed the task from <q>@e.OldValue</q> to <q>@e.NewValue</q></text>,
+        TaskActivityKind.DescriptionChanged => @<text>updated the description</text>,
+        TaskActivityKind.TypeChanged => @<text>changed the type from <b>@e.OldValue</b> to <b>@e.NewValue</b></text>,
+        TaskActivityKind.PriorityChanged => @<text>changed the priority from <b>@e.OldValue</b> to <b>@e.NewValue</b></text>,
+        TaskActivityKind.DueDateChanged => @<text>changed the due date from <b>@Date(e.OldValue)</b> to <b>@Date(e.NewValue)</b></text>,
+        TaskActivityKind.AssigneeChanged when e.OldValue is null => @<text>assigned the task to <b>@e.NewValue</b></text>,
+        TaskActivityKind.AssigneeChanged when e.NewValue is null => @<text>unassigned <b>@e.OldValue</b></text>,
+        TaskActivityKind.AssigneeChanged => @<text>reassigned the task from <b>@e.OldValue</b> to <b>@e.NewValue</b></text>,
+        TaskActivityKind.Moved => @<text>moved the task from <b>@(e.OldValue ?? "another column")</b> to <b>@e.NewValue</b></text>,
+        TaskActivityKind.LabelAdded => @<text>added the label <b>@e.NewValue</b></text>,
+        TaskActivityKind.LabelRemoved => @<text>removed the label <b>@e.OldValue</b></text>,
+        TaskActivityKind.ChecklistItemCompleted => @<text>completed <q>@e.NewValue</q></text>,
+        TaskActivityKind.ChecklistItemReopened => @<text>reopened <q>@e.NewValue</q></text>,
+        _ => @<text>changed the task</text>,
+    };
+
+    private static string Date(string? iso) =>
+        DateOnly.TryParseExact(iso, "yyyy-MM-dd", out var date) ? date.ToString("MMM d, yyyy") : "none";
+}

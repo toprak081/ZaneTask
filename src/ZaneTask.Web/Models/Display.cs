@@ -24,6 +24,11 @@ public static class Display
         _ => "circle",
     };
 
+    /// <summary>
+    /// ARIA states need the literal strings "true"/"false"; Blazor would render a bound <c>true</c> as an empty attribute.
+    /// </summary>
+    public static string Aria(bool value) => value ? "true" : "false";
+
     public static string Name(this TaskPriority priority) => priority.ToString();
 
     public static string Name(this TaskType type) => type.ToString();
@@ -48,6 +53,21 @@ public static class Display
             0 => "?",
             1 => parts[0][..1].ToUpperInvariant(),
             _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant(),
+        };
+    }
+
+    /// <summary>"just now", "5 minutes ago", "yesterday", "3 days ago", then a date.</summary>
+    public static string RelativeTime(DateTime utc, DateTime nowUtc)
+    {
+        var elapsed = nowUtc - DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+        return elapsed switch
+        {
+            { TotalMinutes: < 1 } => "just now",
+            { TotalMinutes: < 60 } => elapsed.Minutes == 1 ? "1 minute ago" : $"{(int)elapsed.TotalMinutes} minutes ago",
+            { TotalHours: < 24 } => (int)elapsed.TotalHours == 1 ? "1 hour ago" : $"{(int)elapsed.TotalHours} hours ago",
+            { TotalDays: < 2 } => "yesterday",
+            { TotalDays: < 7 } => $"{(int)elapsed.TotalDays} days ago",
+            _ => utc.ToLocalTime().ToString("MMM d, yyyy"),
         };
     }
 

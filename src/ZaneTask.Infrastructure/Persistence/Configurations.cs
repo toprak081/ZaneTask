@@ -127,6 +127,22 @@ internal sealed class ChecklistItemConfiguration : IEntityTypeConfiguration<Chec
     }
 }
 
+internal sealed class TaskActivityConfiguration : IEntityTypeConfiguration<TaskActivity>
+{
+    public void Configure(EntityTypeBuilder<TaskActivity> builder)
+    {
+        builder.ToTable("TaskActivities");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.Kind).HasConversion<string>().HasMaxLength(40);
+        builder.Property(a => a.OldValue).HasMaxLength(TaskActivity.ValueMaxLength);
+        builder.Property(a => a.NewValue).HasMaxLength(TaskActivity.ValueMaxLength);
+        builder.HasIndex(a => new { a.TaskId, a.At });
+        builder.HasOne<TaskItem>().WithMany().HasForeignKey(a => a.TaskId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(a => a.ActorId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 internal sealed class CommentConfiguration : IEntityTypeConfiguration<Comment>
 {
     public void Configure(EntityTypeBuilder<Comment> builder)

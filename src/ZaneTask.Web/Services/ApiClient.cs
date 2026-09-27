@@ -63,6 +63,9 @@ public sealed class ApiClient(HttpClient http)
     public Task<TaskDto> AddTaskLabelAsync(Guid taskId, Guid labelId) => SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/labels/{labelId}");
     public Task<TaskDto> RemoveTaskLabelAsync(Guid taskId, Guid labelId) => SendAsync<TaskDto>(HttpMethod.Delete, $"api/tasks/{taskId}/labels/{labelId}");
 
+    public Task<List<TaskActivityDto>> GetTaskActivityAsync(Guid taskId) =>
+        SendAsync<List<TaskActivityDto>>(HttpMethod.Get, $"api/tasks/{taskId}/activity");
+
     // Checklist (every change returns the whole list)
     public Task<List<ChecklistItemDto>> GetChecklistAsync(Guid taskId) =>
         SendAsync<List<ChecklistItemDto>>(HttpMethod.Get, $"api/tasks/{taskId}/checklist");

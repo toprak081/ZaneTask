@@ -4,6 +4,7 @@ using ZaneTask.Application.Common;
 using ZaneTask.Contracts;
 using ZaneTask.Domain.Tasks;
 
+using TaskActivityKind = ZaneTask.Domain.Tasks.TaskActivityKind;
 namespace ZaneTask.Application.Tasks;
 
 /// <summary>A task's checklist. Every change returns the whole, re-ordered list so clients can simply replace theirs.</summary>
@@ -32,7 +33,15 @@ public sealed class ChecklistService(IAppDbContext db, ICurrentUser currentUser,
         if (request.Text is not null)
             task.RenameChecklistItem(itemId, request.Text, Now);
         if (request.IsDone is { } done)
-            task.SetChecklistItemDone(itemId, done, Now);
+        {
+            var item = task.Checklist.Single(i => i.Id == itemId);
+            if (item.IsDone != done)
+            {
+                task.SetChecklistItemDone(itemId, done, Now);
+                db.Record(task.Id, Me, done ? TaskActivityKind.ChecklistItemCompleted : TaskActivityKind.ChecklistItemReopened, Now,
+                    newValue: item.Text);
+            }
+        }
         await db.SaveChangesAsync(ct);
         return ToDtos(task);
     }

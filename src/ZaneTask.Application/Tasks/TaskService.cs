@@ -7,6 +7,7 @@ using ZaneTask.Domain.Tasks;
 using TaskItemStatus = ZaneTask.Contracts.TaskItemStatus;
 using TaskType = ZaneTask.Contracts.TaskType;
 
+using TaskActivityKind = ZaneTask.Domain.Tasks.TaskActivityKind;
 namespace ZaneTask.Application.Tasks;
 
 public sealed record TaskFilter(
@@ -142,6 +143,7 @@ public sealed partial class TaskService(
                 task.AddLabel(project.GetLabel(labelId));
 
             db.Tasks.Add(task);
+            db.Record(task.Id, Me, TaskActivityKind.Created, Now);
             try
             {
                 await db.SaveChangesAsync(ct);
@@ -159,7 +161,15 @@ public sealed partial class TaskService(
     public async Task<TaskDto> UpdateAsync(Guid taskId, UpdateTaskRequest request, CancellationToken ct)
     {
         var task = await LoadTaskForMemberAsync(taskId, ct);
+        var before = (task.Title, task.Description, task.Type, task.Priority, task.DueDate);
         task.Update(request.Title, request.Description, request.Type.ToDomain(), request.Priority.ToDomain(), request.DueDate, Now);
+
+        db.RecordChange(task.Id, Me, TaskActivityKind.TitleChanged, Now, before.Title, task.Title, v => v);
+        if (before.Description != task.Description)
+            db.Record(task.Id, Me, TaskActivityKind.DescriptionChanged, Now);
+        db.RecordChange(task.Id, Me, TaskActivityKind.TypeChanged, Now, before.Type, task.Type, v => v.ToString());
+        db.RecordChange(task.Id, Me, TaskActivityKind.PriorityChanged, Now, before.Priority, task.Priority, v => v.ToString());
+        db.RecordChange(task.Id, Me, TaskActivityKind.DueDateChanged, Now, before.DueDate, task.DueDate, TaskActivityLog.Iso);
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(task, ct);
     }
@@ -168,7 +178,9 @@ public sealed partial class TaskService(
     {
         var task = await LoadTaskForMemberAsync(taskId, ct);
         var project = await db.GetProjectForMemberAsync(task.ProjectId, Me, ct);
+        var before = task.AssigneeId;
         task.Assign(project, request.AssigneeId, Now);
+        db.RecordChange(task.Id, Me, TaskActivityKind.AssigneeChanged, Now, before, task.AssigneeId, v => v?.ToString());
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(task, ct);
     }
@@ -185,7 +197,10 @@ public sealed partial class TaskService(
         };
         var projectTasks = await db.Tasks.Where(t => t.ProjectId == task.ProjectId).ToListAsync(ct);
 
+        var from = project.Columns.FirstOrDefault(c => c.Id == task.ColumnId);
         KanbanBoard.Move(projectTasks, task, column, request.Position, Now);
+        if (from?.Id != column.Id)
+            db.Record(task.Id, Me, TaskActivityKind.Moved, Now, from?.Name, column.Name); // reordering within a column isn't history
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(task, ct);
     }
@@ -211,7 +226,11 @@ public sealed partial class TaskService(
         var task = await LoadTaskForMemberAsync(taskId, ct);
         var label = await db.Labels.FirstOrDefaultAsync(l => l.Id == labelId && l.ProjectId == task.ProjectId, ct)
             ?? throw new NotFoundException("Label", labelId);
-        task.AddLabel(label);
+        if (task.Labels.All(l => l.Id != labelId))
+        {
+            task.AddLabel(label);
+            db.Record(task.Id, Me, TaskActivityKind.LabelAdded, Now, newValue: label.Name);
+        }
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(task, ct);
     }
@@ -219,9 +238,39 @@ public sealed partial class TaskService(
     public async Task<TaskDto> RemoveLabelAsync(Guid taskId, Guid labelId, CancellationToken ct)
     {
         var task = await LoadTaskForMemberAsync(taskId, ct);
-        task.RemoveLabel(labelId);
+        if (task.Labels.FirstOrDefault(l => l.Id == labelId) is { } label)
+        {
+            task.RemoveLabel(labelId);
+            db.Record(task.Id, Me, TaskActivityKind.LabelRemoved, Now, oldValue: label.Name);
+        }
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(task, ct);
+    }
+
+    /// <summary>The task's history, newest first (at most 200 entries).</summary>
+    public async Task<IReadOnlyList<TaskActivityDto>> ListActivityAsync(Guid taskId, CancellationToken ct)
+    {
+        await LoadTaskForMemberAsync(taskId, ct);
+        var entries = await db.TaskActivities.AsNoTracking()
+            .Where(a => a.TaskId == taskId)
+            .OrderByDescending(a => a.At).ThenByDescending(a => a.Id)
+            .Take(200)
+            .ToListAsync(ct);
+
+        // Assignee changes store user ids; show names instead.
+        var userIds = entries.Select(a => a.ActorId)
+            .Concat(entries.Where(a => a.Kind == TaskActivityKind.AssigneeChanged)
+                .SelectMany(a => new[] { a.OldValue, a.NewValue })
+                .Select(v => Guid.TryParse(v, out var id) ? id : Guid.Empty)
+                .Where(id => id != Guid.Empty))
+            .Distinct();
+        var directory = await users.GetByIdsAsync(userIds, ct);
+        string? Value(TaskActivity a, string? value) =>
+            a.Kind == TaskActivityKind.AssigneeChanged && Guid.TryParse(value, out var id) ? directory.User(id).DisplayName : value;
+
+        return entries
+            .Select(a => new TaskActivityDto(a.Id, directory.User(a.ActorId), a.Kind.ToDto(), Value(a, a.OldValue), Value(a, a.NewValue), a.At))
+            .ToList();
     }
 
     private async Task<TaskItem> LoadTaskForMemberAsync(Guid taskId, CancellationToken ct)

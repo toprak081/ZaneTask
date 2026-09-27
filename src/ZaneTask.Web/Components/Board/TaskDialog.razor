@@ -78,7 +78,7 @@
                         {
                             var selected = _form.LabelIds.Contains(label.Id);
                             <button type="button" class="chip chip--pickable @(selected ? "is-selected" : null)"
-                                    style="--chip-color: @label.Color" aria-pressed="@selected" @onclick="() => ToggleLabel(label.Id)">
+                                    style="--chip-color: @label.Color" aria-pressed="@Display.Aria(selected)" @onclick="() => ToggleLabel(label.Id)">
                                 @if (selected)
                                 {
                                     <Icon Name="check" Size="14" />
@@ -108,16 +108,34 @@
 
         @if (_task is not null)
         {
-            <ChecklistEditor TaskId="_task.Id" OnChanged="() => _changed = true" />
+            <ChecklistEditor TaskId="_task.Id" OnChanged="OnChecklistChanged" />
         }
         </div>
 
         @if (_task is not null)
         {
-            <section class="comments" aria-labelledby="comments-heading">
-                <h3 id="comments-heading" class="comments__title">
-                    <Icon Name="message" /> Comments @(_comments is null ? null : $"({_comments.Count})")
-                </h3>
+            <section class="comments" aria-label="Comments and history">
+                <div class="tabs" role="tablist" aria-label="Task activity">
+                    <button type="button" role="tab" id="tab-comments" class="tabs__tab" @ref="_commentsTab" aria-controls="panel-comments"
+                            aria-selected="@Display.Aria(!_showHistory)" tabindex="@(_showHistory ? -1 : 0)"
+                            @onclick="() => _showHistory = false" @onkeydown="OnTabKeyDown">
+                        <Icon Name="message" /> Comments @(_comments is null ? null : $"({_comments.Count})")
+                    </button>
+                    <button type="button" role="tab" id="tab-history" class="tabs__tab" @ref="_historyTab" aria-controls="panel-history"
+                            aria-selected="@Display.Aria(_showHistory)" tabindex="@(_showHistory ? 0 : -1)"
+                            @onclick="() => _showHistory = true" @onkeydown="OnTabKeyDown">
+                        <Icon Name="clock" /> History
+                    </button>
+                </div>
+
+                <div id="panel-history" role="tabpanel" aria-labelledby="tab-history" hidden="@(!_showHistory)">
+                    @if (_showHistory)
+                    {
+                        <TaskHistory TaskId="_task.Id" Version="_historyVersion" />
+                    }
+                </div>
+
+                <div id="panel-comments" role="tabpanel" aria-labelledby="tab-comments" class="comments__panel" hidden="@_showHistory">
                 <p class="field-help">Created by @_task.CreatedBy.DisplayName on @_task.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</p>
 
                 @if (_comments is null)
@@ -189,6 +207,7 @@
                         Comment
                     </button>
                 </form>
+                </div>
             </section>
         }
     </div>
@@ -205,6 +224,28 @@
     private List<CommentDto>? _comments;
     private bool _busy;
     private bool _changed;
+    private bool _showHistory;
+    private int _historyVersion;
+
+    /// <summary>Arrow keys switch tabs (WAI-ARIA tabs pattern).</summary>
+    private async Task OnTabKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is not ("ArrowLeft" or "ArrowRight" or "Home" or "End"))
+            return;
+        _showHistory = e.Key is "ArrowRight" or "End";
+        StateHasChanged();
+        await Task.Yield(); // let the tabindex change render before moving focus
+        await (_showHistory ? _historyTab : _commentsTab).FocusAsync();
+    }
+
+    private ElementReference _commentsTab;
+    private ElementReference _historyTab;
+
+    private void OnChecklistChanged()
+    {
+        _changed = true;
+        _historyVersion++; // completing items shows up in the history
+    }
 
     private string _newComment = "";
     private Guid? _editingCommentId;
@@ -237,6 +278,8 @@
         _newComment = "";
         _editingCommentId = null;
         _changed = false;
+        _showHistory = false;
+        _historyVersion++;
         _dialog.Show();
 
         try

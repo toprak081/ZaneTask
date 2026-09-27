@@ -28,7 +28,7 @@
                 <InputText id="login-password" type="@(_showPassword ? "text" : "password")" class="input"
                            autocomplete="current-password" @bind-Value="_form.Password" aria-describedby="login-password-error" />
                 <button type="button" class="btn btn--icon btn--ghost input-group__btn"
-                        aria-label="@(_showPassword ? "Hide password" : "Show password")" aria-pressed="@_showPassword"
+                        aria-label="@(_showPassword ? "Hide password" : "Show password")" aria-pressed="@Display.Aria(_showPassword)"
                         @onclick="() => _showPassword = !_showPassword">
                     <Icon Name="@(_showPassword ? "eye-off" : "eye")" />
                 </button>

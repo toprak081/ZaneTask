@@ -16,7 +16,7 @@
         </div>
         <div class="menu">
             <button type="button" class="btn btn--icon btn--ghost btn--sm" aria-haspopup="true"
-                    aria-expanded="@_menuOpen" aria-label="Move “@Item.Title”" @onclick="ToggleMenu">
+                    aria-expanded="@Display.Aria(_menuOpen)" aria-label="Move “@Item.Title”" @onclick="ToggleMenu">
                 <Icon Name="move" />
             </button>
             @if (_menuOpen)

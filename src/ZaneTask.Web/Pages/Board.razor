@@ -37,10 +37,10 @@
                 </div>
                 <div class="page-header__actions">
                     <div class="segmented" role="group" aria-label="View">
-                        <button type="button" class="segmented__btn" aria-pressed="@(_view == BoardView)" @onclick="() => SetViewAsync(BoardView)">
+                        <button type="button" class="segmented__btn" aria-pressed="@Display.Aria(_view == BoardView)" @onclick="() => SetViewAsync(BoardView)">
                             <Icon Name="kanban" /> Board
                         </button>
-                        <button type="button" class="segmented__btn" aria-pressed="@(_view == ListView)" @onclick="() => SetViewAsync(ListView)">
+                        <button type="button" class="segmented__btn" aria-pressed="@Display.Aria(_view == ListView)" @onclick="() => SetViewAsync(ListView)">
                             <Icon Name="list" /> List
                         </button>
                     </div>
