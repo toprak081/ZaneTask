@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using ZaneTask.Domain.Projects;
 using ZaneTask.Domain.Tasks;
 
@@ -10,6 +11,9 @@ public interface IAppDbContext
     DbSet<TaskItem> Tasks { get; }
     DbSet<Comment> Comments { get; }
     DbSet<Label> Labels { get; }
+
+    /// <summary>Used to discard pending changes before retrying an operation.</summary>
+    ChangeTracker ChangeTracker { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

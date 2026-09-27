@@ -1,0 +1,10 @@
+@* Task type as icon + text (never color alone). Compact mode hides the text visually but keeps it for screen readers. *@
+<span class="type type--@Type.ToString().ToLowerInvariant() @(Compact ? "type--compact" : null)" title="@Type.Name()">
+    <Icon Name="@Type.Icon()" Size="14" />
+    <span class="@(Compact ? "sr-only" : null)">@Type.Name()</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public TaskType Type { get; set; }
+    [Parameter] public bool Compact { get; set; }
+}

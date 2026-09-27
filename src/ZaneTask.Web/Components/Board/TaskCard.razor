@@ -8,9 +8,12 @@
 
     <div class="task-card__top">
         <span class="task-card__grip" aria-hidden="true"><Icon Name="grip" /></span>
-        <button type="button" class="task-card__title" @onclick="() => OnOpen.InvokeAsync(Item)">
-            @Item.Title
-        </button>
+        <div class="task-card__heading">
+            <span class="task-card__ref"><TypeBadge Type="Item.Type" Compact="true" /> <span class="task-key">@Item.Key</span></span>
+            <button type="button" class="task-card__title" @onclick="() => OnOpen.InvokeAsync(Item)">
+                @Item.Title
+            </button>
+        </div>
         <div class="menu">
             <button type="button" class="btn btn--icon btn--ghost btn--sm" aria-haspopup="true"
                     aria-expanded="@_menuOpen" aria-label="Move “@Item.Title”" @onclick="ToggleMenu">

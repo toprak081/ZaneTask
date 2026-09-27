@@ -9,6 +9,14 @@ public enum TaskItemStatus
     Done = 2,
 }
 
+public enum TaskType
+{
+    Task = 0,
+    Bug = 1,
+    Feature = 2,
+    Improvement = 3,
+}
+
 public enum TaskPriority
 {
     Low = 0,
@@ -20,6 +28,9 @@ public enum TaskPriority
 public sealed record TaskDto(
     Guid Id,
     Guid ProjectId,
+    int Number,
+    string Key,
+    TaskType Type,
     string Title,
     string? Description,
     TaskItemStatus Status,
@@ -43,13 +54,15 @@ public sealed record CreateTaskRequest(
     TaskPriority Priority = TaskPriority.Medium,
     DateOnly? DueDate = null,
     Guid? AssigneeId = null,
-    IReadOnlyList<Guid>? LabelIds = null);
+    IReadOnlyList<Guid>? LabelIds = null,
+    TaskType Type = TaskType.Task);
 
 public sealed record UpdateTaskRequest(
     [Required, MaxLength(200)] string Title,
     [MaxLength(10000)] string? Description,
     TaskPriority Priority,
-    DateOnly? DueDate);
+    DateOnly? DueDate,
+    TaskType Type);
 
 public sealed record AssignTaskRequest(Guid? AssigneeId);
 

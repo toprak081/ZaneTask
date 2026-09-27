@@ -25,6 +25,8 @@ internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.HasKey(p => p.Id);
         builder.Property(p => p.Id).ValueGeneratedNever();
         builder.Property(p => p.Name).HasMaxLength(Project.NameMaxLength).IsRequired();
+        builder.Property(p => p.Key).HasMaxLength(Project.KeyMaxLength).IsRequired();
+        builder.HasIndex(p => p.Key).IsUnique();
         builder.Property(p => p.Description).HasMaxLength(Project.DescriptionMaxLength);
 
         builder.HasMany(p => p.Members).WithOne().HasForeignKey(m => m.ProjectId).OnDelete(DeleteBehavior.Cascade);
@@ -71,6 +73,8 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.Description).HasMaxLength(TaskItem.DescriptionMaxLength);
         builder.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(t => t.Priority).HasConversion<string>().HasMaxLength(20);
+        builder.Property(t => t.Type).HasConversion<string>().HasMaxLength(20);
+        builder.HasIndex(t => new { t.ProjectId, t.Number }).IsUnique();
         builder.HasIndex(t => new { t.ProjectId, t.Status, t.Position });
         builder.HasIndex(t => t.AssigneeId);
 

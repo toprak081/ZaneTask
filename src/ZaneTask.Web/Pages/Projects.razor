@@ -61,7 +61,10 @@
                         <h2 class="project-card__title">
                             <a class="stretched-link" href="projects/@project.Id">@project.Name</a>
                         </h2>
-                        <span class="badge">@project.MyRole.Name()</span>
+                        <span class="project-card__badges">
+                            <span class="task-key">@project.Key</span>
+                            <span class="badge">@project.MyRole.Name()</span>
+                        </span>
                     </div>
                     <p class="project-card__desc text-muted">@(project.Description ?? "No description")</p>
                     <dl class="project-card__stats">
@@ -81,8 +84,15 @@
         <div class="field">
             <label for="project-name">Name <span class="required" aria-hidden="true">*</span></label>
             <InputText id="project-name" class="input" @bind-Value="_form.Name" aria-required="true"
-                       aria-describedby="project-name-error" autocomplete="off" />
+                       aria-describedby="project-name-error" autocomplete="off" @oninput="OnNameInput" />
             <FieldError For="() => _form.Name" Id="project-name-error" />
+        </div>
+        <div class="field">
+            <label for="project-key">Key <span class="required" aria-hidden="true">*</span></label>
+            <InputText id="project-key" class="input input--key" @bind-Value="_form.Key" aria-required="true" autocomplete="off"
+                       maxlength="10" aria-describedby="project-key-help project-key-error" @oninput="() => _keyEdited = true" />
+            <p id="project-key-help" class="field-help">Prefixes task numbers, e.g. <span class="task-key">@(string.IsNullOrWhiteSpace(_form.Key) ? "WEB" : _form.Key.ToUpperInvariant())-1</span>. 2-10 letters or digits.</p>
+            <FieldError For="() => _form.Key" Id="project-key-error" />
         </div>
         <div class="field">
             <label for="project-desc">Description <span class="text-muted">(optional)</span></label>
@@ -103,6 +113,14 @@
     private FormErrors _errors = default!;
     private ProjectForm _form = new();
     private bool _busy;
+    private bool _keyEdited;
+
+    /// <summary>Keeps suggesting a key from the name until the user types their own.</summary>
+    private void OnNameInput(ChangeEventArgs e)
+    {
+        if (!_keyEdited)
+            _form.Key = ProjectKeys.Suggest(e.Value as string);
+    }
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -122,6 +140,7 @@
     private void OpenCreate()
     {
         _form = new ProjectForm();
+        _keyEdited = false;
         _createDialog.Show();
     }
 
@@ -130,7 +149,7 @@
         _busy = true;
         try
         {
-            var project = await Api.CreateProjectAsync(new CreateProjectRequest(_form.Name.Trim(), _form.Description));
+            var project = await Api.CreateProjectAsync(new CreateProjectRequest(_form.Name.Trim(), _form.Description, _form.Key.Trim().ToUpperInvariant()));
             await _createDialog.CloseAsync();
             Toasts.Success($"Project “{project.Name}” created.");
             Navigation.NavigateTo($"projects/{project.Id}");

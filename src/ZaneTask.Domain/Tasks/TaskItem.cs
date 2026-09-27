@@ -17,6 +17,11 @@ public class TaskItem : Entity
     }
 
     public Guid ProjectId { get; private set; }
+
+    /// <summary>Per-project sequence number; shown with the project key, e.g. WEB-12.</summary>
+    public int Number { get; private set; }
+
+    public TaskType Type { get; private set; }
     public string Title { get; private set; }
     public string? Description { get; private set; }
     public TaskItemStatus Status { get; private set; }
@@ -34,12 +39,13 @@ public class TaskItem : Entity
     public IReadOnlyCollection<Comment> Comments => _comments;
     public IReadOnlyCollection<Label> Labels => _labels;
 
-    /// <param name="project">Project the task belongs to; must include its members.</param>
+    /// <param name="project">Project the task belongs to; must include its members. Its task counter is advanced.</param>
     /// <param name="position">Position inside the status column; see <see cref="KanbanBoard.NextPosition"/>.</param>
     public static TaskItem Create(
         Project project,
         string title,
         string? description,
+        TaskType type,
         TaskItemStatus status,
         TaskPriority priority,
         DateOnly? dueDate,
@@ -53,6 +59,8 @@ public class TaskItem : Entity
         return new TaskItem
         {
             ProjectId = project.Id,
+            Number = project.AllocateTaskNumber(),
+            Type = type,
             Title = Guard.Required(title, "Title", TitleMaxLength),
             Description = Guard.Optional(description, "Description", DescriptionMaxLength),
             Status = status,
@@ -66,9 +74,10 @@ public class TaskItem : Entity
         };
     }
 
-    public void Update(string title, string? description, TaskPriority priority, DateOnly? dueDate, DateTime now)
+    public void Update(string title, string? description, TaskType type, TaskPriority priority, DateOnly? dueDate, DateTime now)
     {
         Title = Guard.Required(title, "Title", TitleMaxLength);
+        Type = type;
         Description = Guard.Optional(description, "Description", DescriptionMaxLength);
         Priority = priority;
         DueDate = dueDate;

@@ -38,6 +38,10 @@ public sealed class ProjectForm
 
     [MaxLength(2000, ErrorMessage = "Description must be 2000 characters or fewer.")]
     public string? Description { get; set; }
+
+    [Required(ErrorMessage = "Give the project a short key, like WEB.")]
+    [RegularExpression("^[A-Za-z][A-Za-z0-9]{1,9}$", ErrorMessage = "Key must be " + ProjectKeys.Rule)]
+    public string Key { get; set; } = "";
 }
 
 public sealed class TaskForm
@@ -49,6 +53,7 @@ public sealed class TaskForm
     [MaxLength(10000, ErrorMessage = "Description is too long.")]
     public string? Description { get; set; }
 
+    public TaskType Type { get; set; } = TaskType.Task;
     public TaskItemStatus Status { get; set; } = TaskItemStatus.Todo;
     public TaskPriority Priority { get; set; } = TaskPriority.Medium;
     public DateOnly? DueDate { get; set; }
@@ -64,6 +69,7 @@ public sealed class TaskForm
     {
         Title = task.Title,
         Description = task.Description,
+        Type = task.Type,
         Status = task.Status,
         Priority = task.Priority,
         DueDate = task.DueDate,

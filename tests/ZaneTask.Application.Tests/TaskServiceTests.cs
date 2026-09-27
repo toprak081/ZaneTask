@@ -47,6 +47,55 @@ public sealed class TaskServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Tasks_get_sequential_numbers_per_project_that_are_never_reused()
+    {
+        await ProjectWithBobAsync();
+        var other = await _t.Projects.CreateAsync(new("Other", null, "OTH"), default);
+
+        var a = await CreateAsync("a");
+        var b = await CreateAsync("b");
+        var elsewhere = await _t.Tasks.CreateAsync(other.Id, new("x", null), default);
+        await _t.Tasks.DeleteAsync(b.Id, default);
+        var c = await CreateAsync("c");
+
+        Assert.Equal([1, 2, 3], new[] { a.Number, b.Number, c.Number });
+        Assert.Equal("OTH-1", elsewhere.Key);
+        Assert.EndsWith("-3", c.Key);
+    }
+
+    [Fact]
+    public async Task Type_is_saved_updated_and_filterable()
+    {
+        await ProjectWithBobAsync();
+        var bug = await _t.Tasks.CreateAsync(_projectId, new("Crash on save", null, Type: TaskType.Bug), default);
+        var plain = await CreateAsync("Write docs");
+        Assert.Equal(TaskType.Bug, bug.Type);
+        Assert.Equal(TaskType.Task, plain.Type);
+
+        var feature = await _t.Tasks.UpdateAsync(plain.Id, new("Write docs", null, TaskPriority.Low, null, TaskType.Feature), default);
+        Assert.Equal(TaskType.Feature, feature.Type);
+
+        var bugs = await _t.Tasks.ListAsync(_projectId, new(Type: TaskType.Bug), default);
+        Assert.Equal([bug.Id], bugs.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task Searching_for_a_task_key_finds_that_task()
+    {
+        var project = await _t.Projects.CreateAsync(new("Website", null, "WEB"), default);
+        _projectId = project.Id;
+        await CreateAsync("first");
+        var second = await CreateAsync("second mentions WEB-1 in its title");
+
+        var byKey = await _t.Tasks.ListAsync(_projectId, new(Search: "web-2"), default);
+        Assert.Equal([second.Id], byKey.Select(t => t.Id));
+
+        // A key of another project falls back to a normal text search.
+        var text = await _t.Tasks.ListAsync(_projectId, new(Search: "WEB-1 in"), default);
+        Assert.Equal([second.Id], text.Select(t => t.Id));
+    }
+
+    [Fact]
     public async Task Create_with_assignee_and_labels()
     {
         await ProjectWithBobAsync();

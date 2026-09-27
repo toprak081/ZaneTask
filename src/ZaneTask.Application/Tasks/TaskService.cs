@@ -1,9 +1,11 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ZaneTask.Application.Abstractions;
 using ZaneTask.Application.Common;
 using ZaneTask.Contracts;
 using ZaneTask.Domain.Tasks;
 using TaskItemStatus = ZaneTask.Contracts.TaskItemStatus;
+using TaskType = ZaneTask.Contracts.TaskType;
 
 namespace ZaneTask.Application.Tasks;
 
@@ -11,9 +13,10 @@ public sealed record TaskFilter(
     TaskItemStatus? Status = null,
     Guid? AssigneeId = null,
     Guid? LabelId = null,
-    string? Search = null);
+    string? Search = null,
+    TaskType? Type = null);
 
-public sealed class TaskService(
+public sealed partial class TaskService(
     IAppDbContext db,
     ICurrentUser currentUser,
     IUserDirectory users,
@@ -25,7 +28,7 @@ public sealed class TaskService(
     /// <summary>Tasks of a project ordered for a kanban board: by status, then position.</summary>
     public async Task<IReadOnlyList<TaskDto>> ListAsync(Guid projectId, TaskFilter filter, CancellationToken ct)
     {
-        await db.GetProjectForMemberAsync(projectId, Me, ct);
+        var project = await db.GetProjectForMemberAsync(projectId, Me, ct);
 
         var query = db.Tasks.AsNoTracking().Where(t => t.ProjectId == projectId);
         if (filter.Status is { } status)
@@ -37,7 +40,19 @@ public sealed class TaskService(
             query = query.Where(t => t.AssigneeId == assigneeId);
         if (filter.LabelId is { } labelId)
             query = query.Where(t => t.Labels.Any(l => l.Id == labelId));
-        if (!string.IsNullOrWhiteSpace(filter.Search))
+        if (filter.Type is { } type)
+        {
+            var domainType = type.ToDomain();
+            query = query.Where(t => t.Type == domainType);
+        }
+        if (filter.Search is { } search && TaskKeyRegex().Match(search.Trim()) is { Success: true } key &&
+            string.Equals(key.Groups["project"].Value, project.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            // "WEB-12" finds that task directly.
+            var number = int.Parse(key.Groups["number"].Value);
+            query = query.Where(t => t.Number == number);
+        }
+        else if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             var pattern = $"%{filter.Search.Trim().ToLower()}%";
             query = query.Where(t =>
@@ -95,34 +110,47 @@ public sealed class TaskService(
 
     public async Task<TaskDto> CreateAsync(Guid projectId, CreateTaskRequest request, CancellationToken ct)
     {
-        var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
-        var status = request.Status.ToDomain();
-        var position = await db.Tasks.CountAsync(t => t.ProjectId == projectId && t.Status == status, ct);
+        for (var attempt = 1; ; attempt++)
+        {
+            var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
+            var status = request.Status.ToDomain();
+            var position = await db.Tasks.CountAsync(t => t.ProjectId == projectId && t.Status == status, ct);
 
-        var task = TaskItem.Create(
-            project,
-            request.Title,
-            request.Description,
-            status,
-            request.Priority.ToDomain(),
-            request.DueDate,
-            request.AssigneeId,
-            Me,
-            position,
-            Now);
+            var task = TaskItem.Create(
+                project,
+                request.Title,
+                request.Description,
+                request.Type.ToDomain(),
+                status,
+                request.Priority.ToDomain(),
+                request.DueDate,
+                request.AssigneeId,
+                Me,
+                position,
+                Now);
 
-        foreach (var labelId in request.LabelIds?.Distinct() ?? [])
-            task.AddLabel(project.GetLabel(labelId));
+            foreach (var labelId in request.LabelIds?.Distinct() ?? [])
+                task.AddLabel(project.GetLabel(labelId));
 
-        db.Tasks.Add(task);
-        await db.SaveChangesAsync(ct);
-        return await ToDtoAsync(task, ct);
+            db.Tasks.Add(task);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return await ToDtoAsync(task, ct);
+            }
+            catch (DbUpdateException) when (attempt < 3)
+            {
+                // Someone else created a task in this project at the same moment and took this number
+                // (unique index on ProjectId + Number). Reload the project's counter and try again.
+                db.ChangeTracker.Clear();
+            }
+        }
     }
 
     public async Task<TaskDto> UpdateAsync(Guid taskId, UpdateTaskRequest request, CancellationToken ct)
     {
         var task = await LoadTaskForMemberAsync(taskId, ct);
-        task.Update(request.Title, request.Description, request.Priority.ToDomain(), request.DueDate, Now);
+        task.Update(request.Title, request.Description, request.Type.ToDomain(), request.Priority.ToDomain(), request.DueDate, Now);
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(task, ct);
     }
@@ -207,9 +235,17 @@ public sealed class TaskService(
             .Distinct();
         var directory = await users.GetByIdsAsync(userIds, ct);
 
+        var projectIds = rows.Select(r => r.Task.ProjectId).Distinct().ToList();
+        var projectKeys = await db.Projects.AsNoTracking()
+            .Where(p => projectIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Key, ct);
+
         return rows.Select(r => new TaskDto(
                 r.Task.Id,
                 r.Task.ProjectId,
+                r.Task.Number,
+                $"{projectKeys[r.Task.ProjectId]}-{r.Task.Number}",
+                r.Task.Type.ToDto(),
                 r.Task.Title,
                 r.Task.Description,
                 r.Task.Status.ToDto(),
@@ -226,4 +262,7 @@ public sealed class TaskService(
     }
 
     private sealed record TaskRow(TaskItem Task, List<Domain.Projects.Label> Labels, int CommentCount);
+
+    [GeneratedRegex(@"^(?<project>[A-Za-z][A-Za-z0-9]*)-(?<number>\d{1,9})$")]
+    private static partial Regex TaskKeyRegex();
 }

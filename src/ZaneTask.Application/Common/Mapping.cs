@@ -11,10 +11,12 @@ internal static class Mapping
     public static ProjectRole ToDomain(this Dto.ProjectRole value) => Convert<Dto.ProjectRole, ProjectRole>(value);
     public static TaskItemStatus ToDomain(this Dto.TaskItemStatus value) => Convert<Dto.TaskItemStatus, TaskItemStatus>(value);
     public static TaskPriority ToDomain(this Dto.TaskPriority value) => Convert<Dto.TaskPriority, TaskPriority>(value);
+    public static TaskType ToDomain(this Dto.TaskType value) => Convert<Dto.TaskType, TaskType>(value);
 
     public static Dto.ProjectRole ToDto(this ProjectRole value) => (Dto.ProjectRole)(int)value;
     public static Dto.TaskItemStatus ToDto(this TaskItemStatus value) => (Dto.TaskItemStatus)(int)value;
     public static Dto.TaskPriority ToDto(this TaskPriority value) => (Dto.TaskPriority)(int)value;
+    public static Dto.TaskType ToDto(this TaskType value) => (Dto.TaskType)(int)value;
 
     public static Dto.LabelDto ToDto(this Label label) => new(label.Id, label.Name, label.Color);
 

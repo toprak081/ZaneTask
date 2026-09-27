@@ -206,12 +206,23 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<int>("NextTaskNumber")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
 
                     b.ToTable("Projects", (string)null);
                 });
@@ -291,6 +302,9 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date");
 
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
@@ -312,6 +326,11 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -320,6 +339,9 @@ namespace ZaneTask.Infrastructure.Persistence.Migrations
                     b.HasIndex("AssigneeId");
 
                     b.HasIndex("CreatedById");
+
+                    b.HasIndex("ProjectId", "Number")
+                        .IsUnique();
 
                     b.HasIndex("ProjectId", "Status", "Position");
 

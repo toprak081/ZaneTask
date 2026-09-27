@@ -13,7 +13,10 @@ Gereksinim: [.NET 10 SDK](https://dotnet.microsoft.com/download). Docker **gerek
 - Veriler tek bir dosyada tutulur: `%LOCALAPPDATA%\ZaneTask\zanetask.db`.
   Yedek almak için uygulama kapalıyken bu dosyayı kopyalaman yeterli.
 - Bir kez giriş yaparsın; 30 gün boyunca tekrar sormaz.
-- **Güncellemek:** kodda değişiklik olunca `install.cmd`'yi tekrar çalıştır. Verilerin silinmez.
+- **Güncellemek:** kodda değişiklik olunca `install.cmd`'yi tekrar çalıştır. Verilerin silinmez; kurulum
+  önce `zanetask.backup-TARİH.db` adıyla otomatik yedek alır (son 5 yedek saklanır).
+- **Yedekten geri dönmek:** uygulamayı kapat, `zanetask.db`'yi sil, istediğin yedeğin adını `zanetask.db`
+  yap ve eski sürümü kurmak için `git checkout <eski-commit>` ardından `install.cmd` çalıştır.
 - Sorun olursa sunucu günlüğü: `%LOCALAPPDATA%\ZaneTask\logs\server.log`.
 
 Program dosyaları `%LOCALAPPDATA%\Programs\ZaneTask` klasörüne kurulur. Kaldırmak için bu klasörü ve

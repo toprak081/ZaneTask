@@ -20,6 +20,17 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
+$database = Join-Path $env:LOCALAPPDATA 'ZaneTask\zanetask.db'
+if (Test-Path $database) {
+    Step "Backing up your data"
+    $backup = Join-Path (Split-Path $database) ("zanetask.backup-{0:yyyyMMdd-HHmmss}.db" -f (Get-Date))
+    Copy-Item $database $backup
+    Write-Host "  $backup"
+    # Keep the 5 most recent backups.
+    Get-ChildItem (Split-Path $database) -Filter 'zanetask.backup-*.db' |
+        Sort-Object Name -Descending | Select-Object -Skip 5 | Remove-Item
+}
+
 Step "Removing the previous version (your data is kept)"
 if (Test-Path $target) { Remove-Item -Recurse -Force $target }
 

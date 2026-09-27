@@ -60,9 +60,12 @@
                                 <Icon Name="@task.Status.Icon()" Size="20" />
                             </button>
                             <div class="task-row__main">
-                                <a class="task-row__title" href="projects/@task.ProjectId?task=@task.Id">@task.Title</a>
+                                <a class="task-row__title" href="projects/@task.ProjectId?task=@task.Id">
+                                    <span class="task-key">@task.Key</span> @task.Title
+                                </a>
                                 <div class="task-row__meta">
                                     <span class="meta"><Icon Name="kanban" /> @item.ProjectName</span>
+                                    <TypeBadge Type="task.Type" />
                                     <span class="meta"><Icon Name="@task.Status.Icon()" /> @task.Status.Name()</span>
                                     <PriorityBadge Priority="task.Priority" />
                                     @if (task.DueDate is { } due)

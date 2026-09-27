@@ -1,7 +1,7 @@
 @inject ApiClient Api
 @inject ToastService Toasts
 
-<Dialog @ref="_dialog" Title="@(_task is null ? "New task" : "Task details")" Wide="true" OnClosed="OnDialogClosed">
+<Dialog @ref="_dialog" Title="@(_task is null ? "New task" : _task.Key)" Wide="true" OnClosed="OnDialogClosed">
     <div class="task-dialog @(_task is null ? "task-dialog--new" : null)">
         <EditForm Model="_form" OnValidSubmit="SaveAsync" OnInvalidSubmit="() => _errors.Focus()" FormName="task" class="form">
             <DataAnnotationsValidator />
@@ -21,6 +21,15 @@
             </div>
 
             <div class="form-grid">
+                <div class="field">
+                    <label for="task-type">Type</label>
+                    <InputSelect id="task-type" class="input" @bind-Value="_form.Type">
+                        @foreach (var type in Display.Types)
+                        {
+                            <option value="@type">@type.Name()</option>
+                        }
+                    </InputSelect>
+                </div>
                 <div class="field">
                     <label for="task-status">Status</label>
                     <InputSelect id="task-status" class="input" @bind-Value="_form.Status">
@@ -249,7 +258,7 @@
             {
                 await Api.CreateTaskAsync(Project.Id, new CreateTaskRequest(
                     _form.Title.Trim(), _form.Description, _form.Status, _form.Priority, _form.DueDate,
-                    _form.AssigneeGuid, _form.LabelIds.ToList()));
+                    _form.AssigneeGuid, _form.LabelIds.ToList(), _form.Type));
                 Toasts.Success("Task created.");
             }
             else
@@ -273,7 +282,7 @@
 
     private async Task SaveExistingAsync(TaskDto task)
     {
-        await Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest(_form.Title.Trim(), _form.Description, _form.Priority, _form.DueDate));
+        await Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest(_form.Title.Trim(), _form.Description, _form.Priority, _form.DueDate, _form.Type));
 
         if (_form.AssigneeGuid != task.Assignee?.Id)
             await Api.AssignTaskAsync(task.Id, _form.AssigneeGuid);

@@ -13,13 +13,13 @@ public class KanbanBoardTests
 
     public KanbanBoardTests()
     {
-        _project = Project.Create("P", null, _owner, Now);
+        _project = Project.Create("P", null, "PRJ", _owner, Now);
     }
 
     private TaskItem Add(string title, TaskItemStatus status)
     {
         var task = TaskItem.Create(
-            _project, title, null, status, TaskPriority.Medium, null, null, _owner,
+            _project, title, null, TaskType.Task, status, TaskPriority.Medium, null, null, _owner,
             KanbanBoard.NextPosition(_tasks, status), Now);
         _tasks.Add(task);
         return task;

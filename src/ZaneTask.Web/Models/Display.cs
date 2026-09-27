@@ -7,6 +7,7 @@ public static class Display
 {
     public static readonly TaskItemStatus[] Statuses = [TaskItemStatus.Todo, TaskItemStatus.InProgress, TaskItemStatus.Done];
     public static readonly TaskPriority[] Priorities = [TaskPriority.Low, TaskPriority.Medium, TaskPriority.High, TaskPriority.Critical];
+    public static readonly TaskType[] Types = [TaskType.Task, TaskType.Bug, TaskType.Feature, TaskType.Improvement];
 
     public static string Name(this TaskItemStatus status) => status switch
     {
@@ -24,6 +25,16 @@ public static class Display
     };
 
     public static string Name(this TaskPriority priority) => priority.ToString();
+
+    public static string Name(this TaskType type) => type.ToString();
+
+    public static string Icon(this TaskType type) => type switch
+    {
+        TaskType.Bug => "bug",
+        TaskType.Feature => "sparkles",
+        TaskType.Improvement => "wrench",
+        _ => "square-check",
+    };
 
     public static string CssClass(this TaskPriority priority) => $"priority--{priority.ToString().ToLowerInvariant()}";
 

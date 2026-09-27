@@ -38,6 +38,13 @@
                         <FieldError For="() => _projectForm.Name" Id="settings-name-error" />
                     </div>
                     <div class="field">
+                        <label for="settings-key">Key <span class="required" aria-hidden="true">*</span></label>
+                        <InputText id="settings-key" class="input input--key" @bind-Value="_projectForm.Key" aria-required="true" autocomplete="off"
+                                   maxlength="10" aria-describedby="settings-key-help settings-key-error" />
+                        <p id="settings-key-help" class="field-help">Prefixes task numbers, e.g. <span class="task-key">@(string.IsNullOrWhiteSpace(_projectForm.Key) ? "WEB" : _projectForm.Key.ToUpperInvariant())-1</span>. 2-10 letters or digits.</p>
+                        <FieldError For="() => _projectForm.Key" Id="settings-key-error" />
+                    </div>
+                    <div class="field">
                         <label for="settings-desc">Description</label>
                         <InputTextArea id="settings-desc" class="input" rows="3" @bind-Value="_projectForm.Description" aria-describedby="settings-desc-error" />
                         <FieldError For="() => _projectForm.Description" Id="settings-desc-error" />
@@ -51,6 +58,7 @@
             {
                 <dl class="details">
                     <dt>Name</dt><dd>@_project.Name</dd>
+                    <dt>Key</dt><dd><span class="task-key">@_project.Key</span></dd>
                     <dt>Description</dt><dd>@(_project.Description ?? "—")</dd>
                 </dl>
                 <p class="field-help">Only project owners can change these.</p>
@@ -254,7 +262,7 @@
     private void SetProject(ProjectDto project)
     {
         _project = project;
-        _projectForm = new ProjectForm { Name = project.Name, Description = project.Description };
+        _projectForm = new ProjectForm { Name = project.Name, Description = project.Description, Key = project.Key };
     }
 
     private async Task SaveProjectAsync()
@@ -262,7 +270,7 @@
         _savingProject = true;
         try
         {
-            SetProject(await Api.UpdateProjectAsync(ProjectId, new UpdateProjectRequest(_projectForm.Name.Trim(), _projectForm.Description)));
+            SetProject(await Api.UpdateProjectAsync(ProjectId, new UpdateProjectRequest(_projectForm.Name.Trim(), _projectForm.Description, _projectForm.Key.Trim().ToUpperInvariant())));
             Toasts.Success("Project updated.");
         }
         catch (ApiException e)

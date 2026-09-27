@@ -14,8 +14,9 @@ public sealed class TasksController(TaskService tasks) : ControllerBase
         [FromQuery] Guid? assigneeId,
         [FromQuery] Guid? labelId,
         [FromQuery] string? search,
+        [FromQuery] TaskType? type,
         CancellationToken ct) =>
-        tasks.ListAsync(projectId, new TaskFilter(status, assigneeId, labelId, search), ct);
+        tasks.ListAsync(projectId, new TaskFilter(status, assigneeId, labelId, search, type), ct);
 
     /// <summary>Tasks assigned to the signed-in user across all of their projects.</summary>
     [HttpGet("api/me/tasks")]

@@ -40,6 +40,40 @@ public sealed class ProjectServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Project_key_is_suggested_from_the_name_and_made_unique()
+    {
+        var first = await _t.Projects.CreateAsync(new("Website", null), default);
+        var second = await _t.Projects.CreateAsync(new("Webshop", null), default);
+        var explicitKey = await _t.Projects.CreateAsync(new("Mobile", null, "app"), default);
+
+        Assert.Equal("WEB", first.Key);
+        Assert.Equal("WEB2", second.Key);
+        Assert.Equal("APP", explicitKey.Key);
+    }
+
+    [Fact]
+    public async Task Explicit_duplicate_key_is_a_conflict()
+    {
+        await _t.Projects.CreateAsync(new("Website", null, "WEB"), default);
+
+        _t.ActAs(_bob);
+        await Assert.ThrowsAsync<ConflictException>(() => _t.Projects.CreateAsync(new("Other", null, "web"), default));
+    }
+
+    [Fact]
+    public async Task Owner_can_rename_the_key_and_task_numbers_follow()
+    {
+        var project = await _t.Projects.CreateAsync(new("Website", null, "WEB"), default);
+        var task = await _t.Tasks.CreateAsync(project.Id, new("T", null), default);
+        Assert.Equal("WEB-1", task.Key);
+
+        var renamed = await _t.Projects.UpdateAsync(project.Id, new("Website", null, "site"), default);
+
+        Assert.Equal("SITE", renamed.Key);
+        Assert.Equal("SITE-1", (await _t.Tasks.GetAsync(task.Id, default)).Key);
+    }
+
+    [Fact]
     public async Task Non_members_get_not_found()
     {
         var project = await _t.Projects.CreateAsync(new("Secret", null), default);

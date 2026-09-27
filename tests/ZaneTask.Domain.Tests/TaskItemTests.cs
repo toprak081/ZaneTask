@@ -12,11 +12,11 @@ public class TaskItemTests
 
     public TaskItemTests()
     {
-        _project = Project.Create("P", null, _owner, Now);
+        _project = Project.Create("P", null, "PRJ", _owner, Now);
     }
 
     private TaskItem NewTask(string title = "Task", Guid? assignee = null) =>
-        TaskItem.Create(_project, title, null, TaskItemStatus.Todo, TaskPriority.Medium, null, assignee, _owner, 0, Now);
+        TaskItem.Create(_project, title, null, TaskType.Task, TaskItemStatus.Todo, TaskPriority.Medium, null, assignee, _owner, 0, Now);
 
     [Fact]
     public void Create_requires_a_title()
@@ -59,7 +59,7 @@ public class TaskItemTests
     [Fact]
     public void Labels_from_another_project_are_rejected()
     {
-        var otherProject = Project.Create("Other", null, _owner, Now);
+        var otherProject = Project.Create("Other", null, "PRJ", _owner, Now);
         var foreignLabel = otherProject.AddLabel("Bug", "#FF0000");
         var task = NewTask();
 

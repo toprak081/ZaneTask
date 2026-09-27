@@ -27,6 +27,7 @@ public sealed class ProjectService(
             {
                 p.Id,
                 p.Name,
+                p.Key,
                 p.Description,
                 p.CreatedAt,
                 MyRole = p.Members.First(m => m.UserId == me).Role,
@@ -37,7 +38,7 @@ public sealed class ProjectService(
 
         return rows
             .Select(r => new ProjectSummaryDto(
-                r.Id, r.Name, r.Description, r.MyRole.ToDto(), r.MemberCount, r.OpenTaskCount, r.CreatedAt))
+                r.Id, r.Name, r.Key, r.Description, r.MyRole.ToDto(), r.MemberCount, r.OpenTaskCount, r.CreatedAt))
             .ToList();
     }
 
@@ -49,7 +50,10 @@ public sealed class ProjectService(
 
     public async Task<ProjectDto> CreateAsync(CreateProjectRequest request, CancellationToken ct)
     {
-        var project = Project.Create(request.Name, request.Description, Me, Now);
+        var key = string.IsNullOrWhiteSpace(request.Key)
+            ? await FirstFreeKeyAsync(ProjectKeys.Suggest(request.Name), ct)
+            : await EnsureKeyIsFreeAsync(request.Key, exceptProjectId: null, ct);
+        var project = Project.Create(request.Name, request.Description, key, Me, Now);
         db.Projects.Add(project);
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(project, ct);
@@ -60,6 +64,8 @@ public sealed class ProjectService(
         var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
         project.EnsureOwner(Me);
         project.Update(request.Name, request.Description);
+        if (!string.IsNullOrWhiteSpace(request.Key) && !string.Equals(request.Key, project.Key, StringComparison.OrdinalIgnoreCase))
+            project.ChangeKey(await EnsureKeyIsFreeAsync(request.Key, projectId, ct));
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(project, ct);
     }
@@ -141,6 +147,33 @@ public sealed class ProjectService(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Validates <paramref name="key"/> and makes sure no other project uses it.</summary>
+    private async Task<string> EnsureKeyIsFreeAsync(string key, Guid? exceptProjectId, CancellationToken ct)
+    {
+        var normalized = Project.NormalizeKey(key);
+        if (await db.Projects.AnyAsync(p => p.Key == normalized && p.Id != exceptProjectId, ct))
+            throw new ConflictException($"The key {normalized} is already used by another project.");
+        return normalized;
+    }
+
+    /// <summary>The suggested key, or the same key with a number appended (WEB, WEB2, WEB3…).</summary>
+    private async Task<string> FirstFreeKeyAsync(string suggestion, CancellationToken ct)
+    {
+        var stem = suggestion.Length > Project.KeyMaxLength - 2 ? suggestion[..(Project.KeyMaxLength - 2)] : suggestion;
+        var taken = await db.Projects
+            .Where(p => p.Key.StartsWith(stem))
+            .Select(p => p.Key)
+            .ToListAsync(ct);
+        if (!taken.Contains(suggestion))
+            return suggestion;
+        for (var n = 2; ; n++)
+        {
+            var candidate = $"{stem}{n}";
+            if (!taken.Contains(candidate))
+                return candidate;
+        }
+    }
+
     private static void EnsureLabelExists(Project project, Guid labelId)
     {
         if (project.Labels.All(l => l.Id != labelId))
@@ -159,6 +192,6 @@ public sealed class ProjectService(
         var myRole = project.Members.Single(m => m.UserId == Me).Role;
 
         return new ProjectDto(
-            project.Id, project.Name, project.Description, myRole.ToDto(), project.CreatedAt, members, labels);
+            project.Id, project.Name, project.Key, project.Description, myRole.ToDto(), project.CreatedAt, members, labels);
     }
 }

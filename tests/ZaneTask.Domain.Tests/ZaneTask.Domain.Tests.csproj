@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ZaneTask.Domain\ZaneTask.Domain.csproj" />
+    <ProjectReference Include="..\..\src\ZaneTask.Contracts\ZaneTask.Contracts.csproj" />
   </ItemGroup>
 
 </Project>
