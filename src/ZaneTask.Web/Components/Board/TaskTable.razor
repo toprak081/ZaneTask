@@ -1,0 +1,170 @@
+@* List view of a board: one row per task, sortable by any column. Below 700px rows become stacked cards. *@
+<div class="task-table-wrap">
+    <div class="task-table__mobile-sort field field--inline">
+        <label for="table-sort">Sort by</label>
+        <select id="table-sort" class="input" value="@_sort" @onchange="OnMobileSortChanged">
+            @foreach (var (key, label) in Headers)
+            {
+                <option value="@key">@label</option>
+            }
+        </select>
+    </div>
+
+    @if (!Tasks.Any())
+    {
+        <p class="column__empty">@EmptyText</p>
+    }
+    else
+    {
+        <table class="task-table">
+            <caption class="sr-only">Tasks, sorted by @HeaderLabel(_sort) @(_descending ? "descending" : "ascending")</caption>
+            <thead>
+                <tr>
+                    @foreach (var (key, label) in Headers)
+                    {
+                        <th scope="col" aria-sort="@AriaSort(key)" class="task-table__th--@key.ToString().ToLowerInvariant()">
+                            <button type="button" class="task-table__sort" @onclick="() => SortBy(key)">
+                                @label
+                                @if (_sort == key)
+                                {
+                                    <Icon Name="@(_descending ? "chevron-down" : "chevron-up")" Size="14" />
+                                }
+                            </button>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var task in Sorted)
+                {
+                    var column = Columns.FirstOrDefault(c => c.Id == task.ColumnId);
+                    <tr class="task-table__row @(task.Status == TaskItemStatus.Done ? "is-done" : null)" @key="task.Id"
+                        @onclick="() => OnOpen.InvokeAsync(task)">
+                        <td data-label="Key"><span class="task-key">@task.Key</span></td>
+                        <td data-label="Title" class="task-table__title">
+                            <button type="button" class="task-card__title" @onclick="() => OnOpen.InvokeAsync(task)" @onclick:stopPropagation="true">
+                                @task.Title
+                            </button>
+                        </td>
+                        <td data-label="Type"><TypeBadge Type="task.Type" /></td>
+                        <td data-label="Column">
+                            @if (column is not null)
+                            {
+                                <span class="meta">
+                                    <span class="status status--@column.Category.ToString().ToLowerInvariant()"><Icon Name="@column.Category.Icon()" /></span>
+                                    @column.Name
+                                </span>
+                            }
+                        </td>
+                        <td data-label="Priority"><PriorityBadge Priority="task.Priority" /></td>
+                        <td data-label="Assignee">
+                            @if (task.Assignee is not null)
+                            {
+                                <span class="task-table__person"><Avatar User="task.Assignee" Small="true" /> <span>@task.Assignee.DisplayName</span></span>
+                            }
+                            else
+                            {
+                                <span class="meta">Unassigned</span>
+                            }
+                        </td>
+                        <td data-label="Due">
+                            @if (task.DueDate is { } due)
+                            {
+                                var overdue = due < Today && task.Status != TaskItemStatus.Done;
+                                <span class="meta @(overdue ? "meta--danger" : null)">
+                                    <Icon Name="@(overdue ? "alert" : "calendar")" /> @Display.DueText(due, Today)
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="meta" aria-label="No due date">—</span>
+                            }
+                        </td>
+                        <td data-label="Labels">
+                            <span class="chips">
+                                @foreach (var label in task.Labels)
+                                {
+                                    <LabelChip Label="label" @key="label.Id" />
+                                }
+                            </span>
+                        </td>
+                        <td data-label="Checklist">
+                            @if (task.ChecklistTotal > 0)
+                            {
+                                <span class="meta @(task.ChecklistDone == task.ChecklistTotal ? "meta--success" : null)">
+                                    <Icon Name="square-check" /> @task.ChecklistDone/@task.ChecklistTotal
+                                </span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    public enum SortKey { Key, Title, Type, Column, Priority, Assignee, Due, Labels, Checklist }
+
+    private static readonly (SortKey Key, string Label)[] Headers =
+    [
+        (SortKey.Key, "Key"), (SortKey.Title, "Title"), (SortKey.Type, "Type"), (SortKey.Column, "Column"),
+        (SortKey.Priority, "Priority"), (SortKey.Assignee, "Assignee"), (SortKey.Due, "Due"),
+        (SortKey.Labels, "Labels"), (SortKey.Checklist, "Checklist"),
+    ];
+
+    private SortKey _sort = SortKey.Column;
+    private bool _descending;
+
+    /// <summary>Tasks to show, already filtered by the board.</summary>
+    [Parameter, EditorRequired] public IEnumerable<TaskDto> Tasks { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<BoardColumnDto> Columns { get; set; } = [];
+    [Parameter] public DateOnly Today { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "No tasks yet.";
+    [Parameter] public EventCallback<TaskDto> OnOpen { get; set; }
+
+    private IEnumerable<TaskDto> Sorted
+    {
+        get
+        {
+            var columnOrder = Columns.ToDictionary(c => c.Id, c => c.Position);
+            IOrderedEnumerable<TaskDto> ordered = _sort switch
+            {
+                SortKey.Key => Order(t => t.Number),
+                SortKey.Title => Order(t => t.Title, StringComparer.CurrentCultureIgnoreCase),
+                SortKey.Type => Order(t => t.Type),
+                SortKey.Priority => Order(t => t.Priority),
+                // Empty values always sort last, whatever the direction.
+                SortKey.Assignee => Tasks.OrderBy(t => t.Assignee is null).ThenBy(t => t.Assignee?.DisplayName ?? "", Direction(StringComparer.CurrentCultureIgnoreCase)),
+                SortKey.Due => Tasks.OrderBy(t => t.DueDate is null).ThenBy(t => t.DueDate, Direction(Comparer<DateOnly?>.Default)),
+                SortKey.Labels => Tasks.OrderBy(t => t.Labels.Count == 0).ThenBy(t => t.Labels.FirstOrDefault()?.Name ?? "", Direction(StringComparer.CurrentCultureIgnoreCase)),
+                SortKey.Checklist => Tasks.OrderBy(t => t.ChecklistTotal == 0).ThenBy(t => t.ChecklistTotal == 0 ? 0 : (double)t.ChecklistDone / t.ChecklistTotal, Direction(Comparer<double>.Default)),
+                _ => Order(t => columnOrder.GetValueOrDefault(t.ColumnId, int.MaxValue)),
+            };
+            // Ties keep the board order.
+            return ordered.ThenBy(t => columnOrder.GetValueOrDefault(t.ColumnId, int.MaxValue)).ThenBy(t => t.Position);
+        }
+    }
+
+    private IOrderedEnumerable<TaskDto> Order<TKey>(Func<TaskDto, TKey> key, IComparer<TKey>? comparer = null) =>
+        _descending ? Tasks.OrderByDescending(key, comparer) : Tasks.OrderBy(key, comparer);
+
+    private IComparer<T> Direction<T>(IComparer<T> comparer) =>
+        _descending ? Comparer<T>.Create((a, b) => comparer.Compare(b, a)) : comparer;
+
+    private void SortBy(SortKey key)
+    {
+        _descending = _sort == key && !_descending;
+        _sort = key;
+    }
+
+    private void OnMobileSortChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<SortKey>(e.Value?.ToString(), out var key))
+            (_sort, _descending) = (key, false);
+    }
+
+    private string AriaSort(SortKey key) => _sort != key ? "none" : _descending ? "descending" : "ascending";
+
+    private static string HeaderLabel(SortKey key) => Headers.First(h => h.Key == key).Label.ToLowerInvariant();
+}

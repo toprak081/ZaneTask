@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService Toasts
 @inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
 
 <PageTitle>@(_project?.Name ?? "Board") · ZaneTask</PageTitle>
 
@@ -35,6 +36,14 @@
                     }
                 </div>
                 <div class="page-header__actions">
+                    <div class="segmented" role="group" aria-label="View">
+                        <button type="button" class="segmented__btn" aria-pressed="@(_view == BoardView)" @onclick="() => SetViewAsync(BoardView)">
+                            <Icon Name="kanban" /> Board
+                        </button>
+                        <button type="button" class="segmented__btn" aria-pressed="@(_view == ListView)" @onclick="() => SetViewAsync(ListView)">
+                            <Icon Name="list" /> List
+                        </button>
+                    </div>
                     <div class="avatar-stack" aria-label="@_project.Members.Count members">
                         @foreach (var member in _project.Members.Take(5))
                         {
@@ -105,54 +114,63 @@
             </div>
         </div>
 
-        <div class="board" style="--columns: @_project.Columns.Count">
-            @foreach (var col in _project.Columns)
-            {
-                var tasks = TasksIn(col.Id).ToList();
-                var visible = tasks.Where(Matches).ToList();
-                <section class="column @(_dropColumnId == col.Id && _dragging is not null ? "is-drop-target" : null)"
-                         aria-labelledby="col-@col.Id" @key="col.Id"
-                         @ondragover:preventDefault="true"
-                         @ondragenter="() => OnDragOverColumn(col.Id)"
-                         @ondrop="() => DropAsync(col)">
-                    <header class="column__header">
-                        <h2 id="col-@col.Id" class="column__title">
-                            <span class="status status--@col.Category.ToString().ToLowerInvariant()" title="@col.Category.Name()">
-                                <Icon Name="@col.Category.Icon()" />
-                            </span>
-                            @col.Name
-                        </h2>
-                        <span class="column__count" aria-label="@visible.Count tasks">@visible.Count</span>
-                    </header>
+        @if (_view == ListView)
+        {
+            <TaskTable Tasks="_tasks.Where(Matches)" Columns="_project.Columns" Today="_today"
+                       EmptyText="@(HasFilters && _tasks.Count > 0 ? "No matching tasks." : "No tasks yet.")"
+                       OnOpen="t => _taskDialog.OpenAsync(t)" />
+        }
+        else
+        {
+            <div class="board" style="--columns: @_project.Columns.Count">
+                @foreach (var col in _project.Columns)
+                {
+                    var tasks = TasksIn(col.Id).ToList();
+                    var visible = tasks.Where(Matches).ToList();
+                    <section class="column @(_dropColumnId == col.Id && _dragging is not null ? "is-drop-target" : null)"
+                             aria-labelledby="col-@col.Id" @key="col.Id"
+                             @ondragover:preventDefault="true"
+                             @ondragenter="() => OnDragOverColumn(col.Id)"
+                             @ondrop="() => DropAsync(col)">
+                        <header class="column__header">
+                            <h2 id="col-@col.Id" class="column__title">
+                                <span class="status status--@col.Category.ToString().ToLowerInvariant()" title="@col.Category.Name()">
+                                    <Icon Name="@col.Category.Icon()" />
+                                </span>
+                                @col.Name
+                            </h2>
+                            <span class="column__count" aria-label="@visible.Count tasks">@visible.Count</span>
+                        </header>
 
-                    @if (visible.Count == 0)
-                    {
-                        <p class="column__empty">@(HasFilters && tasks.Count > 0 ? "No matching tasks." : "Nothing here yet.")</p>
-                    }
-                    <ul class="column__list">
-                        @foreach (var task in visible)
+                        @if (visible.Count == 0)
                         {
-                            <TaskCard @key="task.Id"
-                                      Item="task"
-                                      Columns="_project.Columns"
-                                      ColumnCount="tasks.Count"
-                                      Today="_today"
-                                      IsDragging="_dragging?.Id == task.Id"
-                                      IsDropTarget="_dropBefore?.Id == task.Id && _dragging?.Id != task.Id"
-                                      OnOpen="t => _taskDialog.OpenAsync(t)"
-                                      OnDragStart="t => _dragging = t"
-                                      OnDragEnd="ClearDrag"
-                                      OnDragOverCard="OnDragOverCard"
-                                      OnMove="m => MoveAsync(m.Task, m.ColumnId, m.Position)" />
+                            <p class="column__empty">@(HasFilters && tasks.Count > 0 ? "No matching tasks." : "Nothing here yet.")</p>
                         }
-                    </ul>
+                        <ul class="column__list">
+                            @foreach (var task in visible)
+                            {
+                                <TaskCard @key="task.Id"
+                                          Item="task"
+                                          Columns="_project.Columns"
+                                          ColumnCount="tasks.Count"
+                                          Today="_today"
+                                          IsDragging="_dragging?.Id == task.Id"
+                                          IsDropTarget="_dropBefore?.Id == task.Id && _dragging?.Id != task.Id"
+                                          OnOpen="t => _taskDialog.OpenAsync(t)"
+                                          OnDragStart="t => _dragging = t"
+                                          OnDragEnd="ClearDrag"
+                                          OnDragOverCard="OnDragOverCard"
+                                          OnMove="m => MoveAsync(m.Task, m.ColumnId, m.Position)" />
+                            }
+                        </ul>
 
-                    <button type="button" class="btn btn--ghost btn--block column__add" @onclick="() => _taskDialog.OpenNew(col.Id)">
-                        <Icon Name="plus" /> Add task
-                    </button>
-                </section>
-            }
-        </div>
+                        <button type="button" class="btn btn--ghost btn--block column__add" @onclick="() => _taskDialog.OpenNew(col.Id)">
+                            <Icon Name="plus" /> Add task
+                        </button>
+                    </section>
+                }
+            </div>
+        }
 
         <p class="sr-only" aria-live="polite">@_announcement</p>
 
@@ -185,6 +203,38 @@
 
     private Guid? _pendingOpen;
 
+    private const string BoardView = "board";
+    private const string ListView = "list";
+    private string _view = BoardView;
+
+    private string ViewStorageKey => $"zanetask.view.{ProjectId}";
+
+    /// <summary>The chosen view is remembered per project in this browser (a convenience only).</summary>
+    private async Task<string> LoadViewAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<string?>("localStorage.getItem", ViewStorageKey) == ListView ? ListView : BoardView;
+        }
+        catch (JSException)
+        {
+            return BoardView;
+        }
+    }
+
+    private async Task SetViewAsync(string view)
+    {
+        _view = view;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", ViewStorageKey, view);
+        }
+        catch (JSException)
+        {
+            // Storage unavailable (e.g. private mode): the view just isn't remembered.
+        }
+    }
+
     private bool HasFilters =>
         _search.Length > 0 || _assigneeFilter.Length > 0 || _labelFilter.Length > 0 || _typeFilter.Length > 0;
 
@@ -192,6 +242,7 @@
     {
         _currentUserId = (await AuthState.GetAuthenticationStateAsync()).User.UserId();
         _pendingOpen = OpenTaskId;
+        _view = await LoadViewAsync();
         await LoadAsync();
     }
 
