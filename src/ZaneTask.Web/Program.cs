@@ -8,8 +8,10 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
-    ?? throw new InvalidOperationException("Set ApiBaseUrl in wwwroot/appsettings.json.");
+// Empty = same origin (the app is served by the API, e.g. in the desktop app).
+// Development points at the separately running API in wwwroot/appsettings.Development.json.
+var configuredApiUrl = builder.Configuration["ApiBaseUrl"];
+var apiBaseUrl = string.IsNullOrWhiteSpace(configuredApiUrl) ? builder.HostEnvironment.BaseAddress : configuredApiUrl;
 
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();

@@ -14,10 +14,23 @@ namespace ZaneTask.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>Assembly holding the SQLite migrations; PostgreSQL migrations live in this assembly.</summary>
+    public const string SqliteMigrationsAssembly = "ZaneTask.Infrastructure.Sqlite";
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // "Postgres" for a shared server, "Sqlite" for the single-user desktop app (one local file, no Docker).
+        var provider = configuration["Database:Provider"] ?? "Postgres";
+        var connectionString = configuration.GetConnectionString("Default");
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("Default")));
+        {
+            if (string.Equals(provider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+                options.UseSqlite(connectionString, sqlite => sqlite.MigrationsAssembly(SqliteMigrationsAssembly));
+            else if (string.Equals(provider, "Postgres", StringComparison.OrdinalIgnoreCase))
+                options.UseNpgsql(connectionString);
+            else
+                throw new InvalidOperationException($"Unknown Database:Provider '{provider}'. Use 'Postgres' or 'Sqlite'.");
+        });
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
         services

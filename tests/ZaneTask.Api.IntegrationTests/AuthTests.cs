@@ -16,6 +16,22 @@ public sealed class AuthTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Health_check_is_public()
+    {
+        var response = await factory.CreateClient().GetAsync("/api/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unknown_api_routes_are_404_not_the_web_app()
+    {
+        var response = await factory.CreateClient().GetAsync("/api/does-not-exist");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Register_login_and_me()
     {
         var client = factory.CreateClient();

@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ZaneTask.Application\ZaneTask.Application.csproj" />
     <ProjectReference Include="..\..\src\ZaneTask.Infrastructure\ZaneTask.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\ZaneTask.Infrastructure.Sqlite\ZaneTask.Infrastructure.Sqlite.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- EF Core migrations for the SQLite (single-user desktop) database.
+       PostgreSQL migrations live in ZaneTask.Infrastructure/Persistence/Migrations. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\ZaneTask.Infrastructure\ZaneTask.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

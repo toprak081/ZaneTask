@@ -16,6 +16,7 @@ public sealed class JwtOptions
     [Required, MinLength(32)]
     public string SigningKey { get; set; } = "";
 
-    [Range(1, 24 * 60)]
+    /// <summary>Up to 30 days; the desktop app uses the maximum so you stay signed in.</summary>
+    [Range(1, 30 * 24 * 60)]
     public int AccessTokenLifetimeMinutes { get; set; } = 60;
 }

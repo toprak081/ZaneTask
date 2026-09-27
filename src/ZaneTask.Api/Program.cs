@@ -26,6 +26,7 @@ builder.Services.AddExceptionHandler<ExceptionToProblemDetailsHandler>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+builder.Services.AddHostedService<ParentProcessWatcher>();
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -51,8 +52,9 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-else
+else if (app.Configuration.GetValue("Hosting:UseHttpsRedirection", true))
 {
+    // The desktop app serves plain HTTP on 127.0.0.1 and turns this off.
     app.UseHttpsRedirection();
 }
 
@@ -61,5 +63,15 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+
+// Serve the Blazor app from the same origin, so a single process is enough (used by the desktop app).
+app.MapStaticAssets();
+app.MapFallback("/api/{**path}", () => Results.NotFound()); // unknown API routes stay 404, not index.html
+// no-cache: after an update the app must pick up the new index.html (and through it the new app files).
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache",
+});
 
 app.Run();

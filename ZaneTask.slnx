@@ -3,7 +3,9 @@
     <Project Path="src/ZaneTask.Api/ZaneTask.Api.csproj" />
     <Project Path="src/ZaneTask.Application/ZaneTask.Application.csproj" />
     <Project Path="src/ZaneTask.Contracts/ZaneTask.Contracts.csproj" />
+    <Project Path="src/ZaneTask.Desktop/ZaneTask.Desktop.csproj" />
     <Project Path="src/ZaneTask.Domain/ZaneTask.Domain.csproj" />
+    <Project Path="src/ZaneTask.Infrastructure.Sqlite/ZaneTask.Infrastructure.Sqlite.csproj" />
     <Project Path="src/ZaneTask.Infrastructure/ZaneTask.Infrastructure.csproj" />
     <Project Path="src/ZaneTask.Web/ZaneTask.Web.csproj" />
   </Folder>
