@@ -10,6 +10,10 @@ poor fit for a work tool.
 Flat surfaces with 1px borders; shadows only for overlays (dialogs, menus, dragged card).
 
 ## Color tokens (defined in `wwwroot/css/app.css`)
+Light is the default `:root`; dark overrides live under `:root[data-theme="dark"]`. The theme menu (top bar and
+sign-in pages) offers System / Light / Dark; the choice is stored in localStorage and applied by an inline script in
+`index.html` before the first paint, then kept current by `wwwroot/js/app.js` (the desktop app follows it for its title bar).
+
 | Token | Light | Dark | Use |
 |---|---|---|---|
 | `--bg` | `#F5F3FF` | `#0F0E1A` | App background |

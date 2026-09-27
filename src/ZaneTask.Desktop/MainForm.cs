@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Win32;
@@ -20,31 +21,40 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        var dark = IsWindowsDarkMode();
-        var background = dark ? DarkBackground : LightBackground;
-
         Text = "ZaneTask";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(1280, 820);
         MinimumSize = new Size(420, 480);
-        BackColor = background;
-
         _status = new Label
         {
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 11f),
-            ForeColor = dark ? Color.FromArgb(0xA8, 0xAE, 0xC8) : Color.FromArgb(0x47, 0x55, 0x69),
             Text = "Starting ZaneTask…",
         };
-        _webView = new WebView2 { Dock = DockStyle.Fill, Visible = false, DefaultBackgroundColor = background };
+        _webView = new WebView2 { Dock = DockStyle.Fill, Visible = false };
 
         Controls.Add(_webView);
         Controls.Add(_status);
 
-        if (dark)
-            HandleCreated += (_, _) => UseDarkTitleBar(Handle);
+        // Until the page reports the user's theme choice, follow Windows.
+        ApplyTheme(IsWindowsDarkMode());
+        HandleCreated += (_, _) => SetDarkTitleBar(Handle, _dark);
+    }
+
+    private bool _dark;
+
+    /// <summary>Matches the window (background, title bar) to the app's light or dark theme.</summary>
+    private void ApplyTheme(bool dark)
+    {
+        _dark = dark;
+        var background = dark ? DarkBackground : LightBackground;
+        BackColor = background;
+        _webView.DefaultBackgroundColor = background;
+        _status.ForeColor = dark ? Color.FromArgb(0xA8, 0xAE, 0xC8) : Color.FromArgb(0x47, 0x55, 0x69);
+        if (IsHandleCreated)
+            SetDarkTitleBar(Handle, dark);
     }
 
     protected override async void OnShown(EventArgs e)
@@ -84,6 +94,21 @@ internal sealed class MainForm : Form
         browser.Settings.AreDevToolsEnabled = false;
 #endif
         browser.DocumentTitleChanged += (_, _) => Text = browser.DocumentTitle;
+
+        // The page posts {"theme":"dark"|"light"} whenever the theme changes (see wwwroot/js/app.js).
+        browser.WebMessageReceived += (_, args) =>
+        {
+            try
+            {
+                using var message = JsonDocument.Parse(args.WebMessageAsJson);
+                if (message.RootElement.TryGetProperty("theme", out var theme))
+                    ApplyTheme(theme.GetString() == "dark");
+            }
+            catch (JsonException)
+            {
+                // Ignore anything that isn't a theme message.
+            }
+        };
 
         // Keep the app window on ZaneTask; anything else (e.g. links in comments) opens in your normal browser.
         browser.NewWindowRequested += (_, args) =>
@@ -139,10 +164,10 @@ internal sealed class MainForm : Form
         return key?.GetValue("AppsUseLightTheme") is 0;
     }
 
-    private static void UseDarkTitleBar(IntPtr handle)
+    private static void SetDarkTitleBar(IntPtr handle, bool dark)
     {
         const int DwmwaUseImmersiveDarkMode = 20;
-        var enabled = 1;
+        var enabled = dark ? 1 : 0;
         _ = DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref enabled, sizeof(int));
     }
 

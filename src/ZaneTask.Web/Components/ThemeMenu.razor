@@ -1,0 +1,70 @@
+@inject IJSRuntime JS
+
+@* Theme picker: follow the system, or force light/dark. The choice is stored in this browser (see js/app.js). *@
+<div class="menu theme-menu">
+    <button type="button" class="btn btn--icon btn--ghost" aria-haspopup="true" aria-expanded="@Display.Aria(_open)"
+            aria-label="Theme: @Label(_theme)" title="Theme: @Label(_theme)" @onclick="() => _open = !_open">
+        <Icon Name="@IconFor(_theme)" Size="18" />
+    </button>
+    @if (_open)
+    {
+        <button type="button" class="menu__backdrop" tabindex="-1" aria-hidden="true" @onclick="() => _open = false"></button>
+        <div class="menu__panel" role="group" aria-label="Theme" @onkeydown="OnKeyDown">
+            @foreach (var option in Options)
+            {
+                <button type="button" class="menu__item" aria-pressed="@Display.Aria(_theme == option)" @onclick="() => SetAsync(option)">
+                    <Icon Name="@IconFor(option)" /> @Label(option)
+                    @if (_theme == option)
+                    {
+                        <Icon Name="check" Class="menu__check" />
+                    }
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly string[] Options = ["system", "light", "dark"];
+    private string _theme = "system";
+    private bool _open;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _theme = await JS.InvokeAsync<string>("zanetask.theme.get");
+        }
+        catch (JSException)
+        {
+            _theme = "system";
+        }
+    }
+
+    private async Task SetAsync(string theme)
+    {
+        _theme = theme;
+        _open = false;
+        await JS.InvokeVoidAsync("zanetask.theme.set", theme);
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            _open = false;
+    }
+
+    private static string Label(string theme) => theme switch
+    {
+        "light" => "Light",
+        "dark" => "Dark",
+        _ => "System",
+    };
+
+    private static string IconFor(string theme) => theme switch
+    {
+        "light" => "sun",
+        "dark" => "moon",
+        _ => "monitor",
+    };
+}
