@@ -2,8 +2,10 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using ZaneTask.Api.Infrastructure;
+using ZaneTask.Api.Realtime;
 using ZaneTask.Application;
 using ZaneTask.Application.Abstractions;
+using ZaneTask.Contracts;
 using ZaneTask.Infrastructure;
 using ZaneTask.Infrastructure.Persistence;
 
@@ -28,13 +30,17 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 
 builder.Services.AddApplication();
+builder.Services.AddSingleton<IBoardNotifier, SignalRBoardNotifier>();
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options => options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options => options.AddPolicy(WebClientCors, policy => policy
     .WithOrigins(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
     .AllowAnyHeader()
-    .AllowAnyMethod()));
+    .AllowAnyMethod()
+    .AllowCredentials())); // needed by the SignalR client's negotiate request
 
 var app = builder.Build();
 
@@ -61,5 +67,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<BoardHub>(BoardHubContract.Path);
 
 app.Run();

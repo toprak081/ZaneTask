@@ -17,10 +17,15 @@ public sealed class TaskService(
     IAppDbContext db,
     ICurrentUser currentUser,
     IUserDirectory users,
+    IBoardNotifier notifier,
     TimeProvider clock)
 {
     private Guid Me => currentUser.UserId;
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
+
+    // Sent after a successful save; never with the request's token, so a cancelled request can't skip it.
+    private Task NotifyAsync(Guid projectId, BoardChange change, Guid? taskId = null) =>
+        notifier.NotifyAsync(new BoardEvent(projectId, change, taskId, Me), CancellationToken.None);
 
     /// <summary>Tasks of a project ordered for a kanban board: by status, then position.</summary>
     public async Task<IReadOnlyList<TaskDto>> ListAsync(Guid projectId, TaskFilter filter, CancellationToken ct)
@@ -83,6 +88,7 @@ public sealed class TaskService(
 
         db.Tasks.Add(task);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Tasks, task.Id);
         return await ToDtoAsync(task, ct);
     }
 
@@ -91,6 +97,7 @@ public sealed class TaskService(
         var task = await LoadTaskForMemberAsync(taskId, ct);
         task.Update(request.Title, request.Description, request.Priority.ToDomain(), request.DueDate, Now);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(task.ProjectId, BoardChange.Tasks, task.Id);
         return await ToDtoAsync(task, ct);
     }
 
@@ -100,6 +107,7 @@ public sealed class TaskService(
         var project = await db.GetProjectForMemberAsync(task.ProjectId, Me, ct);
         task.Assign(project, request.AssigneeId, Now);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(task.ProjectId, BoardChange.Tasks, task.Id);
         return await ToDtoAsync(task, ct);
     }
 
@@ -110,6 +118,7 @@ public sealed class TaskService(
 
         KanbanBoard.Move(projectTasks, task, request.Status.ToDomain(), request.Position, Now);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(task.ProjectId, BoardChange.Tasks, task.Id);
         return await ToDtoAsync(task, ct);
     }
 
@@ -127,6 +136,7 @@ public sealed class TaskService(
         KanbanBoard.Remove(projectTasks, task);
         db.Tasks.Remove(task);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(task.ProjectId, BoardChange.Tasks, task.Id);
     }
 
     public async Task<TaskDto> AddLabelAsync(Guid taskId, Guid labelId, CancellationToken ct)
@@ -136,6 +146,7 @@ public sealed class TaskService(
             ?? throw new NotFoundException("Label", labelId);
         task.AddLabel(label);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(task.ProjectId, BoardChange.Tasks, task.Id);
         return await ToDtoAsync(task, ct);
     }
 
@@ -144,6 +155,7 @@ public sealed class TaskService(
         var task = await LoadTaskForMemberAsync(taskId, ct);
         task.RemoveLabel(labelId);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(task.ProjectId, BoardChange.Tasks, task.Id);
         return await ToDtoAsync(task, ct);
     }
 

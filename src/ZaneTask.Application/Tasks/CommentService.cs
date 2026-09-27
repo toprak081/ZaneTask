@@ -10,10 +10,15 @@ public sealed class CommentService(
     IAppDbContext db,
     ICurrentUser currentUser,
     IUserDirectory users,
+    IBoardNotifier notifier,
     TimeProvider clock)
 {
     private Guid Me => currentUser.UserId;
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
+
+    // Sent after a successful save; never with the request's token, so a cancelled request can't skip it.
+    private Task NotifyAsync(Guid projectId, BoardChange change, Guid? taskId = null) =>
+        notifier.NotifyAsync(new BoardEvent(projectId, change, taskId, Me), CancellationToken.None);
 
     public async Task<IReadOnlyList<CommentDto>> ListAsync(Guid taskId, CancellationToken ct)
     {
@@ -35,17 +40,19 @@ public sealed class CommentService(
         var comment = task.AddComment(Me, request.Body, Now);
         db.Comments.Add(comment);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(task.ProjectId, BoardChange.Comments, taskId);
         return await ToDtoAsync(comment, ct);
     }
 
     public async Task<CommentDto> UpdateAsync(Guid commentId, SaveCommentRequest request, CancellationToken ct)
     {
-        var (comment, _) = await LoadCommentAsync(commentId, ct);
+        var (comment, projectId) = await LoadCommentAsync(commentId, ct);
         if (comment.AuthorId != Me)
             throw new ForbiddenException("Only the author can edit a comment.");
 
         comment.Edit(Me, request.Body, Now);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Comments, comment.TaskId);
         return await ToDtoAsync(comment, ct);
     }
 
@@ -61,6 +68,7 @@ public sealed class CommentService(
 
         db.Comments.Remove(comment);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Comments, comment.TaskId);
     }
 
     private async Task<TaskItem> EnsureTaskVisibleAsync(Guid taskId, CancellationToken ct)

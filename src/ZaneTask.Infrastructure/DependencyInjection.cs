@@ -49,6 +49,17 @@ public static class DependencyInjection
                     NameClaimType = "name",
                     ClockSkew = TimeSpan.FromSeconds(30),
                 };
+                bearer.Events = new JwtBearerEvents
+                {
+                    // Browsers can't set headers on WebSocket requests, so SignalR sends the token in the query string.
+                    OnMessageReceived = context =>
+                    {
+                        var token = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(token) && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                            context.Token = token;
+                        return Task.CompletedTask;
+                    },
+                };
             });
 
         services.AddScoped<IAuthService, AuthService>();

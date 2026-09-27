@@ -11,10 +11,15 @@ public sealed class ProjectService(
     IAppDbContext db,
     ICurrentUser currentUser,
     IUserDirectory users,
+    IBoardNotifier notifier,
     TimeProvider clock)
 {
     private Guid Me => currentUser.UserId;
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
+
+    // Sent after a successful save; never with the request's token, so a cancelled request can't skip it.
+    private Task NotifyAsync(Guid projectId, BoardChange change, Guid? taskId = null) =>
+        notifier.NotifyAsync(new BoardEvent(projectId, change, taskId, Me), CancellationToken.None);
 
     public async Task<IReadOnlyList<ProjectSummaryDto>> ListAsync(CancellationToken ct)
     {
@@ -61,6 +66,7 @@ public sealed class ProjectService(
         project.EnsureOwner(Me);
         project.Update(request.Name, request.Description);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Project);
         return await ToDtoAsync(project, ct);
     }
 
@@ -70,6 +76,7 @@ public sealed class ProjectService(
         project.EnsureOwner(Me);
         db.Projects.Remove(project);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.ProjectDeleted);
     }
 
     public async Task<ProjectMemberDto> AddMemberAsync(Guid projectId, AddMemberRequest request, CancellationToken ct)
@@ -82,6 +89,7 @@ public sealed class ProjectService(
 
         var member = project.AddMember(user.Id, request.Role.ToDomain(), Now);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Project);
         return new ProjectMemberDto(user, member.Role.ToDto(), member.JoinedAt);
     }
 
@@ -92,6 +100,7 @@ public sealed class ProjectService(
         project.EnsureOwner(Me);
         project.ChangeMemberRole(userId, request.Role.ToDomain());
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Project);
 
         var member = project.Members.Single(m => m.UserId == userId);
         var directory = await users.GetByIdsAsync([userId], ct);
@@ -114,6 +123,7 @@ public sealed class ProjectService(
             task.Assign(project, null, Now);
 
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Project);
     }
 
     public async Task<LabelDto> CreateLabelAsync(Guid projectId, SaveLabelRequest request, CancellationToken ct)
@@ -121,6 +131,7 @@ public sealed class ProjectService(
         var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
         var label = project.AddLabel(request.Name, request.Color);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Project);
         return label.ToDto();
     }
 
@@ -130,6 +141,7 @@ public sealed class ProjectService(
         EnsureLabelExists(project, labelId);
         var label = project.UpdateLabel(labelId, request.Name, request.Color);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Project);
         return label.ToDto();
     }
 
@@ -139,6 +151,7 @@ public sealed class ProjectService(
         EnsureLabelExists(project, labelId);
         project.RemoveLabel(labelId);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(projectId, BoardChange.Project);
     }
 
     private static void EnsureLabelExists(Project project, Guid labelId)
