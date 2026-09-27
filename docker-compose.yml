@@ -1,0 +1,23 @@
+# Local development database. Start: `docker compose up -d`  Stop: `docker compose stop`
+# Credentials match ConnectionStrings:Default in src/ZaneTask.Api/appsettings.Development.json.
+services:
+  postgres:
+    image: postgres:17
+    container_name: zanetask-postgres
+    environment:
+      POSTGRES_DB: zanetask
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres # local development only
+    ports:
+      - "5432:5432"
+    volumes:
+      - zanetask-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zanetask"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  zanetask-data:
