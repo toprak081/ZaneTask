@@ -48,7 +48,7 @@
                     <a class="btn btn--secondary" href="projects/@ProjectId/settings">
                         <Icon Name="settings" /> Settings
                     </a>
-                    <button type="button" class="btn btn--primary" @onclick="() => _taskDialog.OpenNew(TaskItemStatus.Todo)">
+                    <button type="button" class="btn btn--primary" @onclick="() => _taskDialog.OpenNew(FirstColumn(TaskItemStatus.Todo))">
                         <Icon Name="plus" /> New task
                     </button>
                 </div>
@@ -105,34 +105,37 @@
             </div>
         </div>
 
-        <div class="board">
-            @foreach (var status in Display.Statuses)
+        <div class="board" style="--columns: @_project.Columns.Count">
+            @foreach (var col in _project.Columns)
             {
-                var column = Column(status).ToList();
-                var visible = column.Where(Matches).ToList();
-                <section class="column @(_dropStatus == status && _dragging is not null ? "is-drop-target" : null)"
-                         aria-labelledby="col-@status"
+                var tasks = TasksIn(col.Id).ToList();
+                var visible = tasks.Where(Matches).ToList();
+                <section class="column @(_dropColumnId == col.Id && _dragging is not null ? "is-drop-target" : null)"
+                         aria-labelledby="col-@col.Id" @key="col.Id"
                          @ondragover:preventDefault="true"
-                         @ondragenter="() => OnDragOverColumn(status)"
-                         @ondrop="() => DropAsync(status)">
+                         @ondragenter="() => OnDragOverColumn(col.Id)"
+                         @ondrop="() => DropAsync(col)">
                     <header class="column__header">
-                        <h2 id="col-@status" class="column__title">
-                            <span class="status status--@status.ToString().ToLowerInvariant()"><Icon Name="@status.Icon()" /></span>
-                            @status.Name()
+                        <h2 id="col-@col.Id" class="column__title">
+                            <span class="status status--@col.Category.ToString().ToLowerInvariant()" title="@col.Category.Name()">
+                                <Icon Name="@col.Category.Icon()" />
+                            </span>
+                            @col.Name
                         </h2>
                         <span class="column__count" aria-label="@visible.Count tasks">@visible.Count</span>
                     </header>
 
                     @if (visible.Count == 0)
                     {
-                        <p class="column__empty">@(HasFilters && column.Count > 0 ? "No matching tasks." : "Nothing here yet.")</p>
+                        <p class="column__empty">@(HasFilters && tasks.Count > 0 ? "No matching tasks." : "Nothing here yet.")</p>
                     }
                     <ul class="column__list">
                         @foreach (var task in visible)
                         {
                             <TaskCard @key="task.Id"
                                       Item="task"
-                                      ColumnCount="column.Count"
+                                      Columns="_project.Columns"
+                                      ColumnCount="tasks.Count"
                                       Today="_today"
                                       IsDragging="_dragging?.Id == task.Id"
                                       IsDropTarget="_dropBefore?.Id == task.Id && _dragging?.Id != task.Id"
@@ -140,11 +143,11 @@
                                       OnDragStart="t => _dragging = t"
                                       OnDragEnd="ClearDrag"
                                       OnDragOverCard="OnDragOverCard"
-                                      OnMove="m => MoveAsync(m.Task, m.Status, m.Position)" />
+                                      OnMove="m => MoveAsync(m.Task, m.ColumnId, m.Position)" />
                         }
                     </ul>
 
-                    <button type="button" class="btn btn--ghost btn--block column__add" @onclick="() => _taskDialog.OpenNew(status)">
+                    <button type="button" class="btn btn--ghost btn--block column__add" @onclick="() => _taskDialog.OpenNew(col.Id)">
                         <Icon Name="plus" /> Add task
                     </button>
                 </section>
@@ -172,7 +175,7 @@
 
     private TaskDto? _dragging;
     private TaskDto? _dropBefore;
-    private TaskItemStatus? _dropStatus;
+    private Guid? _dropColumnId;
     private string _announcement = "";
 
     [Parameter] public Guid ProjectId { get; set; }
@@ -233,8 +236,14 @@
         }
     }
 
-    private IEnumerable<TaskDto> Column(TaskItemStatus status) =>
-        _tasks!.Where(t => t.Status == status).OrderBy(t => t.Position);
+    private IEnumerable<TaskDto> TasksIn(Guid columnId) =>
+        _tasks!.Where(t => t.ColumnId == columnId).OrderBy(t => t.Position);
+
+    /// <summary>Leftmost column of a category, or the leftmost column.</summary>
+    private Guid FirstColumn(TaskItemStatus category) =>
+        (_project!.Columns.FirstOrDefault(c => c.Category == category) ?? _project.Columns[0]).Id;
+
+    private string ColumnName(Guid columnId) => _project!.Columns.FirstOrDefault(c => c.Id == columnId)?.Name ?? "another column";
 
     private bool Matches(TaskDto task)
     {
@@ -268,27 +277,27 @@
         if (_dragging is null)
             return;
         _dropBefore = target;
-        _dropStatus = target.Status;
+        _dropColumnId = target.ColumnId;
     }
 
-    private void OnDragOverColumn(TaskItemStatus status)
+    private void OnDragOverColumn(Guid columnId)
     {
-        if (_dragging is null || _dropStatus == status)
+        if (_dragging is null || _dropColumnId == columnId)
             return;
-        _dropStatus = status;
+        _dropColumnId = columnId;
         _dropBefore = null;
     }
 
-    private async Task DropAsync(TaskItemStatus status)
+    private async Task DropAsync(BoardColumnDto column)
     {
         if (_dragging is not { } task)
             return;
 
         int position;
-        if (_dropBefore is { } before && before.Status == status && before.Id != task.Id)
+        if (_dropBefore is { } before && before.ColumnId == column.Id && before.Id != task.Id)
         {
             // The server removes the task before inserting, so moving down within a column shifts by one.
-            position = before.Position - (task.Status == status && task.Position < before.Position ? 1 : 0);
+            position = before.Position - (task.ColumnId == column.Id && task.Position < before.Position ? 1 : 0);
         }
         else
         {
@@ -296,32 +305,33 @@
         }
 
         ClearDrag();
-        await MoveAsync(task, status, position);
+        await MoveAsync(task, column.Id, position);
     }
 
     private void ClearDrag()
     {
         _dragging = null;
         _dropBefore = null;
-        _dropStatus = null;
+        _dropColumnId = null;
     }
 
     // Moving (shared by drag and drop and the Move menu) --------------------
 
-    private async Task MoveAsync(TaskDto task, TaskItemStatus status, int position)
+    private async Task MoveAsync(TaskDto task, Guid columnId, int position)
     {
-        if (task.Status == status && task.Position == position)
+        if (task.ColumnId == columnId && task.Position == position)
             return;
 
+        var category = _project!.Columns.First(c => c.Id == columnId).Category;
         var snapshot = _tasks!;
-        _tasks = ApplyMove(snapshot, task, status, position);
+        _tasks = ApplyMove(snapshot, task, columnId, category, position);
         var moved = _tasks.First(t => t.Id == task.Id);
-        _announcement = $"Moved “{task.Title}” to {status.Name()}, position {moved.Position + 1}.";
+        _announcement = $"Moved “{task.Title}” to {ColumnName(columnId)}, position {moved.Position + 1}.";
         StateHasChanged();
 
         try
         {
-            await Api.MoveTaskAsync(task.Id, status, moved.Position);
+            await Api.MoveTaskAsync(task.Id, columnId, moved.Position);
         }
         catch (ApiException e)
         {
@@ -331,17 +341,17 @@
     }
 
     /// <summary>Client-side mirror of the server's KanbanBoard.Move, for instant feedback.</summary>
-    private static List<TaskDto> ApplyMove(List<TaskDto> tasks, TaskDto task, TaskItemStatus status, int position)
+    private static List<TaskDto> ApplyMove(List<TaskDto> tasks, TaskDto task, Guid columnId, TaskItemStatus category, int position)
     {
-        var result = tasks.Where(t => t.Status != status && t.Status != task.Status).ToList();
+        var result = tasks.Where(t => t.ColumnId != columnId && t.ColumnId != task.ColumnId).ToList();
 
-        var target = tasks.Where(t => t.Status == status && t.Id != task.Id).OrderBy(t => t.Position).ToList();
-        target.Insert(Math.Clamp(position, 0, target.Count), task with { Status = status });
+        var target = tasks.Where(t => t.ColumnId == columnId && t.Id != task.Id).OrderBy(t => t.Position).ToList();
+        target.Insert(Math.Clamp(position, 0, target.Count), task with { ColumnId = columnId, Status = category });
         result.AddRange(target.Select((t, i) => t with { Position = i }));
 
-        if (task.Status != status)
+        if (task.ColumnId != columnId)
         {
-            var source = tasks.Where(t => t.Status == task.Status && t.Id != task.Id).OrderBy(t => t.Position);
+            var source = tasks.Where(t => t.ColumnId == task.ColumnId && t.Id != task.Id).OrderBy(t => t.Position);
             result.AddRange(source.Select((t, i) => t with { Position = i }));
         }
 

@@ -137,6 +137,95 @@
             }
         </section>
 
+        @* Board columns ---------------------------------------------------- *@
+        <section class="card settings-section" aria-labelledby="columns-heading">
+            <h2 id="columns-heading" class="settings-section__title">Board columns</h2>
+            <p class="text-muted">
+                Each column has a meaning. Tasks in <strong>Done</strong> columns count as finished; everything else is open.
+            </p>
+
+            <ul class="column-list">
+                @foreach (var column in _project.Columns)
+                {
+                    <li class="column-row" @key="column.Id">
+                        @if (IsOwner && _editingColumnId == column.Id)
+                        {
+                            <label class="sr-only" for="edit-column-name">Column name</label>
+                            <input id="edit-column-name" class="input input--sm" maxlength="40" @bind="_editColumnName" @bind:event="oninput" />
+                            <label class="sr-only" for="edit-column-category">Meaning</label>
+                            <select id="edit-column-category" class="input input--sm" @bind="_editColumnCategory">
+                                @foreach (var category in Display.Statuses)
+                                {
+                                    <option value="@category">@category.Name()</option>
+                                }
+                            </select>
+                            <button type="button" class="btn btn--primary btn--sm" disabled="@(_columnBusy || string.IsNullOrWhiteSpace(_editColumnName))"
+                                    @onclick="() => SaveColumnAsync(column)">Save</button>
+                            <button type="button" class="btn btn--ghost btn--sm" @onclick="() => _editingColumnId = null">Cancel</button>
+                        }
+                        else
+                        {
+                            <span class="column-row__name">
+                                <span class="status status--@column.Category.ToString().ToLowerInvariant()"><Icon Name="@column.Category.Icon()" /></span>
+                                @column.Name
+                            </span>
+                            <span class="badge">@column.Category.Name()</span>
+                            @if (IsOwner)
+                            {
+                                <button type="button" class="btn btn--icon btn--ghost" aria-label="Move @column.Name left"
+                                        disabled="@(_columnBusy || column.Position == 0)" @onclick="() => MoveColumnAsync(column, column.Position - 1)">
+                                    <Icon Name="chevron-left" />
+                                </button>
+                                <button type="button" class="btn btn--icon btn--ghost" aria-label="Move @column.Name right"
+                                        disabled="@(_columnBusy || column.Position == _project.Columns.Count - 1)" @onclick="() => MoveColumnAsync(column, column.Position + 1)">
+                                    <Icon Name="chevron-right" />
+                                </button>
+                                <button type="button" class="btn btn--icon btn--ghost" aria-label="Edit column @column.Name"
+                                        disabled="@_columnBusy" @onclick="() => StartEditColumn(column)">
+                                    <Icon Name="pencil" />
+                                </button>
+                                <button type="button" class="btn btn--icon btn--danger-ghost" aria-label="Delete column @column.Name"
+                                        disabled="@(_columnBusy || _project.Columns.Count <= 1)" @onclick="() => AskDeleteColumn(column)">
+                                    <Icon Name="trash" />
+                                </button>
+                            }
+                        }
+                    </li>
+                }
+            </ul>
+
+            @if (IsOwner)
+            {
+                <form class="inline-form" @onsubmit="AddColumnAsync">
+                    <div class="inline-form__row">
+                        <div class="field inline-form__grow">
+                            <label for="new-column-name">New column</label>
+                            <input id="new-column-name" class="input" maxlength="40" placeholder="e.g. Code review" autocomplete="off"
+                                   @bind="_newColumnName" @bind:event="oninput" />
+                        </div>
+                        <div class="field">
+                            <label for="new-column-category">Meaning</label>
+                            <select id="new-column-category" class="input" @bind="_newColumnCategory">
+                                @foreach (var category in Display.Statuses)
+                                {
+                                    <option value="@category">@category.Name()</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="inline-form__submit">
+                            <button type="submit" class="btn btn--secondary" disabled="@(_columnBusy || string.IsNullOrWhiteSpace(_newColumnName))">
+                                <Icon Name="plus" /> Add column
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            }
+            else
+            {
+                <p class="field-help">Only project owners can change the board columns.</p>
+            }
+        </section>
+
         @* Labels ----------------------------------------------------------- *@
         <section class="card settings-section" aria-labelledby="labels-heading">
             <h2 id="labels-heading" class="settings-section__title">Labels</h2>
@@ -215,6 +304,28 @@
 
 <ConfirmDialog @ref="_confirm" />
 
+<Dialog @ref="_deleteColumnDialog" Title="Delete column?">
+    @if (_deletingColumn is not null && _project is not null)
+    {
+        <p class="dialog__text">“@_deletingColumn.Name” will be removed from the board. Its tasks are kept and moved to another column.</p>
+        <div class="field">
+            <label for="move-tasks-to">Move its tasks to</label>
+            <select id="move-tasks-to" class="input" @bind="_moveTasksTo">
+                @foreach (var other in _project.Columns.Where(c => c.Id != _deletingColumn.Id))
+                {
+                    <option value="@other.Id">@other.Name</option>
+                }
+            </select>
+        </div>
+        <div class="dialog__actions">
+            <button type="button" class="btn btn--secondary" @onclick="() => _deleteColumnDialog.CloseAsync()">Cancel</button>
+            <button type="button" class="btn btn--danger" disabled="@_columnBusy" @onclick="DeleteColumnAsync">
+                <Icon Name="trash" /> Delete column
+            </button>
+        </div>
+    }
+</Dialog>
+
 @code {
     private ProjectDto? _project;
     private string? _loadError;
@@ -233,6 +344,16 @@
     private FormErrors _labelErrors = default!;
     private bool _addingLabel;
     private Guid? _editingLabelId;
+
+    private bool _columnBusy;
+    private string _newColumnName = "";
+    private TaskItemStatus _newColumnCategory = TaskItemStatus.InProgress;
+    private Guid? _editingColumnId;
+    private string _editColumnName = "";
+    private TaskItemStatus _editColumnCategory;
+    private Dialog _deleteColumnDialog = default!;
+    private BoardColumnDto? _deletingColumn;
+    private Guid _moveTasksTo;
     private string _editLabelName = "";
     private string _editLabelColor = "";
 
@@ -412,6 +533,62 @@
         catch (ApiException e)
         {
             Toasts.Error(e.Message);
+        }
+    }
+
+    // Board columns -----------------------------------------------------------
+
+    private Task AddColumnAsync() => RunColumnAsync(async () =>
+    {
+        SetProject(await Api.CreateColumnAsync(ProjectId, new SaveColumnRequest(_newColumnName.Trim(), _newColumnCategory)));
+        _newColumnName = "";
+    });
+
+    private void StartEditColumn(BoardColumnDto column)
+    {
+        _editingColumnId = column.Id;
+        _editColumnName = column.Name;
+        _editColumnCategory = column.Category;
+    }
+
+    private Task SaveColumnAsync(BoardColumnDto column) => RunColumnAsync(async () =>
+    {
+        SetProject(await Api.UpdateColumnAsync(ProjectId, column.Id, new SaveColumnRequest(_editColumnName.Trim(), _editColumnCategory)));
+        _editingColumnId = null;
+    });
+
+    private Task MoveColumnAsync(BoardColumnDto column, int position) => RunColumnAsync(async () =>
+        SetProject(await Api.MoveColumnAsync(ProjectId, column.Id, position)));
+
+    private void AskDeleteColumn(BoardColumnDto column)
+    {
+        _deletingColumn = column;
+        _moveTasksTo = _project!.Columns.First(c => c.Id != column.Id).Id;
+        _deleteColumnDialog.Show();
+    }
+
+    private Task DeleteColumnAsync() => RunColumnAsync(async () =>
+    {
+        var name = _deletingColumn!.Name;
+        SetProject(await Api.DeleteColumnAsync(ProjectId, _deletingColumn.Id, _moveTasksTo));
+        await _deleteColumnDialog.CloseAsync();
+        Toasts.Success($"Column “{name}” deleted.");
+    });
+
+    private async Task RunColumnAsync(Func<Task> action)
+    {
+        _columnBusy = true;
+        try
+        {
+            await action();
+        }
+        catch (ApiException e)
+        {
+            Toasts.Error(e.Message);
+        }
+        finally
+        {
+            _columnBusy = false;
         }
     }
 

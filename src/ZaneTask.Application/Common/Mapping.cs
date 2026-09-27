@@ -20,6 +20,9 @@ internal static class Mapping
 
     public static Dto.LabelDto ToDto(this Label label) => new(label.Id, label.Name, label.Color);
 
+    public static Dto.BoardColumnDto ToDto(this BoardColumn column) =>
+        new(column.Id, column.Name, column.Position, column.Category.ToDto());
+
     /// <summary>Resolves a user id, falling back to a placeholder for accounts that no longer exist.</summary>
     public static Dto.UserDto User(this IReadOnlyDictionary<Guid, Dto.UserDto> users, Guid id) =>
         users.TryGetValue(id, out var user) ? user : new Dto.UserDto(id, "", "Unknown user");

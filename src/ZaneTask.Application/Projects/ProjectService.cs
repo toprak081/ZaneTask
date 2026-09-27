@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using ZaneTask.Application.Abstractions;
 using ZaneTask.Application.Common;
 using ZaneTask.Contracts;
+using ZaneTask.Domain.Common;
 using ZaneTask.Domain.Projects;
+using ZaneTask.Domain.Tasks;
 using DomainStatus = ZaneTask.Domain.Tasks.TaskItemStatus;
 
 namespace ZaneTask.Application.Projects;
@@ -74,9 +76,82 @@ public sealed class ProjectService(
     {
         var project = await db.GetProjectForMemberAsync(projectId, Me, ct);
         project.EnsureOwner(Me);
+
+        // Tasks reference board columns without cascading (so a column can never silently take tasks with it);
+        // delete them explicitly so EF removes tasks before the columns.
+        db.Tasks.RemoveRange(await db.Tasks.Where(t => t.ProjectId == projectId).ToListAsync(ct));
         db.Projects.Remove(project);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task<ProjectDto> CreateColumnAsync(Guid projectId, SaveColumnRequest request, CancellationToken ct)
+    {
+        var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
+        project.EnsureOwner(Me);
+        project.AddColumn(request.Name, request.Category.ToDomain());
+        await db.SaveChangesAsync(ct);
+        return await ToDtoAsync(project, ct);
+    }
+
+    /// <summary>Renames a column and/or changes its category; the column's tasks follow the new category.</summary>
+    public async Task<ProjectDto> UpdateColumnAsync(Guid projectId, Guid columnId, SaveColumnRequest request, CancellationToken ct)
+    {
+        var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
+        project.EnsureOwner(Me);
+        var column = GetColumnOrNotFound(project, columnId);
+
+        if (!string.Equals(column.Name, request.Name.Trim(), StringComparison.Ordinal))
+            project.RenameColumn(columnId, request.Name);
+
+        var category = request.Category.ToDomain();
+        if (column.Category != category)
+        {
+            project.SetColumnCategory(columnId, category);
+            var tasks = await db.Tasks.Where(t => t.ColumnId == columnId).ToListAsync(ct);
+            foreach (var task in tasks)
+                task.SyncWithColumn(column);
+        }
+
+        await db.SaveChangesAsync(ct);
+        return await ToDtoAsync(project, ct);
+    }
+
+    public async Task<ProjectDto> MoveColumnAsync(Guid projectId, Guid columnId, MoveColumnRequest request, CancellationToken ct)
+    {
+        var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
+        project.EnsureOwner(Me);
+        GetColumnOrNotFound(project, columnId);
+        project.MoveColumn(columnId, request.Position);
+        await db.SaveChangesAsync(ct);
+        return await ToDtoAsync(project, ct);
+    }
+
+    /// <summary>
+    /// Deletes a column after moving its tasks to the bottom of <paramref name="moveTasksTo"/>
+    /// (default: the leftmost other column). No task is ever lost.
+    /// </summary>
+    public async Task<ProjectDto> DeleteColumnAsync(Guid projectId, Guid columnId, Guid? moveTasksTo, CancellationToken ct)
+    {
+        var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
+        project.EnsureOwner(Me);
+        GetColumnOrNotFound(project, columnId);
+
+        var target = moveTasksTo is { } targetId
+            ? GetColumnOrNotFound(project, targetId)
+            : project.OrderedColumns.FirstOrDefault(c => c.Id != columnId);
+        if (target is null || target.Id == columnId)
+            throw new DomainException("Choose another column to move this column's tasks to.");
+
+        var projectTasks = await db.Tasks.Where(t => t.ProjectId == projectId).ToListAsync(ct);
+        KanbanBoard.MoveAll(projectTasks, columnId, target, Now);
+        project.RemoveColumn(columnId);
+
+        await db.SaveChangesAsync(ct);
+        return await ToDtoAsync(project, ct);
+    }
+
+    private static BoardColumn GetColumnOrNotFound(Project project, Guid columnId) =>
+        project.Columns.FirstOrDefault(c => c.Id == columnId) ?? throw new NotFoundException("Column", columnId);
 
     public async Task<ProjectMemberDto> AddMemberAsync(Guid projectId, AddMemberRequest request, CancellationToken ct)
     {
@@ -189,9 +264,10 @@ public sealed class ProjectService(
             .Select(m => new ProjectMemberDto(directory.User(m.UserId), m.Role.ToDto(), m.JoinedAt))
             .ToList();
         var labels = project.Labels.OrderBy(l => l.Name).Select(l => l.ToDto()).ToList();
+        var columns = project.OrderedColumns.Select(c => c.ToDto()).ToList();
         var myRole = project.Members.Single(m => m.UserId == Me).Role;
 
         return new ProjectDto(
-            project.Id, project.Name, project.Key, project.Description, myRole.ToDto(), project.CreatedAt, members, labels);
+            project.Id, project.Name, project.Key, project.Description, myRole.ToDto(), project.CreatedAt, members, labels, columns);
     }
 }

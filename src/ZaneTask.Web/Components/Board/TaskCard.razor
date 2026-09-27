@@ -81,6 +81,9 @@
     private bool _menuOpen;
 
     [Parameter, EditorRequired] public TaskDto Item { get; set; } = default!;
+    /// <summary>The project's columns in board order (for the Move menu).</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<BoardColumnDto> Columns { get; set; } = [];
+
     [Parameter] public int ColumnCount { get; set; }
     [Parameter] public bool IsDragging { get; set; }
     [Parameter] public bool IsDropTarget { get; set; }
@@ -92,22 +95,22 @@
     [Parameter] public EventCallback<TaskDto> OnDragOverCard { get; set; }
 
     /// <summary>Raised by the Move menu with the target status and position.</summary>
-    [Parameter] public EventCallback<(TaskDto Task, TaskItemStatus Status, int Position)> OnMove { get; set; }
+    [Parameter] public EventCallback<(TaskDto Task, Guid ColumnId, int Position)> OnMove { get; set; }
 
-    private sealed record MoveOption(string Text, string Icon, bool Enabled, TaskItemStatus Status, int Position);
+    private sealed record MoveOption(string Text, string Icon, bool Enabled, Guid ColumnId, int Position);
 
     private IEnumerable<MoveOption> Moves
     {
         get
         {
-            var index = Array.IndexOf(Display.Statuses, Item.Status);
-            var prev = index > 0 ? Display.Statuses[index - 1] : (TaskItemStatus?)null;
-            var next = index < Display.Statuses.Length - 1 ? Display.Statuses[index + 1] : (TaskItemStatus?)null;
+            var index = Columns.ToList().FindIndex(c => c.Id == Item.ColumnId);
+            var prev = index > 0 ? Columns[index - 1] : null;
+            var next = index >= 0 && index < Columns.Count - 1 ? Columns[index + 1] : null;
 
-            yield return new($"To {prev?.Name() ?? "previous column"}", "chevron-left", prev is not null, prev ?? Item.Status, int.MaxValue);
-            yield return new($"To {next?.Name() ?? "next column"}", "chevron-right", next is not null, next ?? Item.Status, int.MaxValue);
-            yield return new("Up", "chevron-up", Item.Position > 0, Item.Status, Item.Position - 1);
-            yield return new("Down", "chevron-down", Item.Position < ColumnCount - 1, Item.Status, Item.Position + 1);
+            yield return new($"To {prev?.Name ?? "previous column"}", "chevron-left", prev is not null, prev?.Id ?? Item.ColumnId, int.MaxValue);
+            yield return new($"To {next?.Name ?? "next column"}", "chevron-right", next is not null, next?.Id ?? Item.ColumnId, int.MaxValue);
+            yield return new("Up", "chevron-up", Item.Position > 0, Item.ColumnId, Item.Position - 1);
+            yield return new("Down", "chevron-down", Item.Position < ColumnCount - 1, Item.ColumnId, Item.Position + 1);
         }
     }
 
@@ -122,6 +125,6 @@
     private async Task MoveAsync(MoveOption move)
     {
         _menuOpen = false;
-        await OnMove.InvokeAsync((Item, move.Status, move.Position));
+        await OnMove.InvokeAsync((Item, move.ColumnId, move.Position));
     }
 }

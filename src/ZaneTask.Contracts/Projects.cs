@@ -38,7 +38,17 @@ public sealed record ProjectDto(
     ProjectRole MyRole,
     DateTime CreatedAt,
     IReadOnlyList<ProjectMemberDto> Members,
-    IReadOnlyList<LabelDto> Labels);
+    IReadOnlyList<LabelDto> Labels,
+    IReadOnlyList<BoardColumnDto> Columns);
+
+/// <summary>A board column; <see cref="Category"/> says whether its tasks count as to do, in progress or done.</summary>
+public sealed record BoardColumnDto(Guid Id, string Name, int Position, TaskItemStatus Category);
+
+public sealed record SaveColumnRequest(
+    [Required, MaxLength(40)] string Name,
+    TaskItemStatus Category);
+
+public sealed record MoveColumnRequest([Range(0, int.MaxValue)] int Position);
 
 public sealed record ProjectMemberDto(UserDto User, ProjectRole Role, DateTime JoinedAt);
 

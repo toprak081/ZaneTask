@@ -54,7 +54,7 @@ public sealed class TaskForm
     public string? Description { get; set; }
 
     public TaskType Type { get; set; } = TaskType.Task;
-    public TaskItemStatus Status { get; set; } = TaskItemStatus.Todo;
+    public Guid ColumnId { get; set; }
     public TaskPriority Priority { get; set; } = TaskPriority.Medium;
     public DateOnly? DueDate { get; set; }
 
@@ -70,7 +70,7 @@ public sealed class TaskForm
         Title = task.Title,
         Description = task.Description,
         Type = task.Type,
-        Status = task.Status,
+        ColumnId = task.ColumnId,
         Priority = task.Priority,
         DueDate = task.DueDate,
         AssigneeId = task.Assignee?.Id.ToString() ?? "",

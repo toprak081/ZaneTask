@@ -163,7 +163,7 @@
         try
         {
             // Append to the end of the target column on the board.
-            var moved = await Api.MoveTaskAsync(task.Id, target, int.MaxValue / 2);
+            var moved = await Api.MoveTaskToCategoryAsync(task.Id, target, int.MaxValue / 2);
             var index = _tasks!.FindIndex(t => t.Task.Id == task.Id);
             if (target == TaskItemStatus.Done && !_includeDone)
                 _tasks.RemoveAt(index);

@@ -34,6 +34,7 @@ public sealed record TaskDto(
     string Title,
     string? Description,
     TaskItemStatus Status,
+    Guid ColumnId,
     TaskPriority Priority,
     DateOnly? DueDate,
     UserDto? Assignee,
@@ -57,7 +58,8 @@ public sealed record CreateTaskRequest(
     DateOnly? DueDate = null,
     Guid? AssigneeId = null,
     IReadOnlyList<Guid>? LabelIds = null,
-    TaskType Type = TaskType.Task);
+    TaskType Type = TaskType.Task,
+    Guid? ColumnId = null);
 
 public sealed record UpdateTaskRequest(
     [Required, MaxLength(200)] string Title,
@@ -68,9 +70,14 @@ public sealed record UpdateTaskRequest(
 
 public sealed record AssignTaskRequest(Guid? AssigneeId);
 
+/// <summary>
+/// Target is <paramref name="ColumnId"/>, or when that is null the leftmost column of <paramref name="Category"/>
+/// (e.g. "mark as done" without knowing the project's columns).
+/// </summary>
 public sealed record MoveTaskRequest(
-    TaskItemStatus Status,
-    [Range(0, int.MaxValue)] int Position);
+    Guid? ColumnId,
+    [Range(0, int.MaxValue)] int Position,
+    TaskItemStatus? Category = null);
 
 public sealed record CommentDto(
     Guid Id,

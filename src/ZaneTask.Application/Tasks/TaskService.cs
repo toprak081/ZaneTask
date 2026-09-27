@@ -14,7 +14,8 @@ public sealed record TaskFilter(
     Guid? AssigneeId = null,
     Guid? LabelId = null,
     string? Search = null,
-    TaskType? Type = null);
+    TaskType? Type = null,
+    Guid? ColumnId = null);
 
 public sealed partial class TaskService(
     IAppDbContext db,
@@ -31,6 +32,8 @@ public sealed partial class TaskService(
         var project = await db.GetProjectForMemberAsync(projectId, Me, ct);
 
         var query = db.Tasks.AsNoTracking().Where(t => t.ProjectId == projectId);
+        if (filter.ColumnId is { } columnId)
+            query = query.Where(t => t.ColumnId == columnId);
         if (filter.Status is { } status)
         {
             var domainStatus = status.ToDomain();
@@ -64,8 +67,12 @@ public sealed partial class TaskService(
             .Select(t => new TaskRow(t, t.Labels.ToList(), t.Comments.Count(), t.Checklist.Count(c => c.IsDone), t.Checklist.Count()))
             .ToListAsync(ct);
 
-        // Status is stored as text, so order by the enum value in memory rather than alphabetically in SQL.
-        var ordered = rows.OrderBy(r => r.Task.Status).ThenBy(r => r.Task.Position).ToList();
+        // Board order: column position, then position inside the column.
+        var columnOrder = project.Columns.ToDictionary(c => c.Id, c => c.Position);
+        var ordered = rows
+            .OrderBy(r => columnOrder.GetValueOrDefault(r.Task.ColumnId, int.MaxValue))
+            .ThenBy(r => r.Task.Position)
+            .ToList();
         return await ToDtosAsync(ordered, ct);
     }
 
@@ -113,15 +120,17 @@ public sealed partial class TaskService(
         for (var attempt = 1; ; attempt++)
         {
             var project = await db.GetProjectForMemberAsync(projectId, Me, ct, includeLabels: true);
-            var status = request.Status.ToDomain();
-            var position = await db.Tasks.CountAsync(t => t.ProjectId == projectId && t.Status == status, ct);
+            var column = request.ColumnId is { } columnId
+                ? project.GetColumn(columnId)
+                : project.DefaultColumn(request.Status.ToDomain());
+            var position = await db.Tasks.CountAsync(t => t.ColumnId == column.Id, ct);
 
             var task = TaskItem.Create(
                 project,
                 request.Title,
                 request.Description,
                 request.Type.ToDomain(),
-                status,
+                column,
                 request.Priority.ToDomain(),
                 request.DueDate,
                 request.AssigneeId,
@@ -167,9 +176,16 @@ public sealed partial class TaskService(
     public async Task<TaskDto> MoveAsync(Guid taskId, MoveTaskRequest request, CancellationToken ct)
     {
         var task = await LoadTaskForMemberAsync(taskId, ct);
+        var project = await db.GetProjectForMemberAsync(task.ProjectId, Me, ct);
+        var column = (request.ColumnId, request.Category) switch
+        {
+            ({ } columnId, _) => project.GetColumn(columnId),
+            (null, { } category) => project.DefaultColumn(category.ToDomain()),
+            _ => throw new Domain.Common.DomainException("Choose a column to move the task to."),
+        };
         var projectTasks = await db.Tasks.Where(t => t.ProjectId == task.ProjectId).ToListAsync(ct);
 
-        KanbanBoard.Move(projectTasks, task, request.Status.ToDomain(), request.Position, Now);
+        KanbanBoard.Move(projectTasks, task, column, request.Position, Now);
         await db.SaveChangesAsync(ct);
         return await ToDtoAsync(task, ct);
     }
@@ -252,6 +268,7 @@ public sealed partial class TaskService(
                 r.Task.Title,
                 r.Task.Description,
                 r.Task.Status.ToDto(),
+                r.Task.ColumnId,
                 r.Task.Priority.ToDto(),
                 r.Task.DueDate,
                 r.Task.AssigneeId is { } assigneeId ? directory.User(assigneeId) : null,

@@ -26,12 +26,17 @@ public class TaskItem : Entity
     public TaskType Type { get; private set; }
     public string Title { get; private set; }
     public string? Description { get; private set; }
+
+    /// <summary>The board column the task is in.</summary>
+    public Guid ColumnId { get; private set; }
+
+    /// <summary>Category of <see cref="ColumnId"/> (to do / in progress / done), kept in sync for fast queries.</summary>
     public TaskItemStatus Status { get; private set; }
     public TaskPriority Priority { get; private set; }
     public DateOnly? DueDate { get; private set; }
     public Guid? AssigneeId { get; private set; }
 
-    /// <summary>Zero-based order of the task inside its status column.</summary>
+    /// <summary>Zero-based order of the task inside its column.</summary>
     public int Position { get; internal set; }
 
     public Guid CreatedById { get; private set; }
@@ -45,13 +50,14 @@ public class TaskItem : Entity
     public IReadOnlyCollection<ChecklistItem> Checklist => _checklist;
 
     /// <param name="project">Project the task belongs to; must include its members. Its task counter is advanced.</param>
-    /// <param name="position">Position inside the status column; see <see cref="KanbanBoard.NextPosition"/>.</param>
+    /// <param name="column">Board column of <paramref name="project"/> to put the task in.</param>
+    /// <param name="position">Position inside the column; see <see cref="KanbanBoard.NextPosition"/>.</param>
     public static TaskItem Create(
         Project project,
         string title,
         string? description,
         TaskType type,
-        TaskItemStatus status,
+        BoardColumn column,
         TaskPriority priority,
         DateOnly? dueDate,
         Guid? assigneeId,
@@ -60,6 +66,8 @@ public class TaskItem : Entity
         DateTime now)
     {
         EnsureAssignable(project, assigneeId);
+        if (column.ProjectId != project.Id)
+            throw new DomainException("Column does not belong to this project.");
 
         return new TaskItem
         {
@@ -68,7 +76,8 @@ public class TaskItem : Entity
             Type = type,
             Title = Guard.Required(title, "Title", TitleMaxLength),
             Description = Guard.Optional(description, "Description", DescriptionMaxLength),
-            Status = status,
+            ColumnId = column.Id,
+            Status = column.Category,
             Priority = priority,
             DueDate = dueDate,
             AssigneeId = assigneeId,
@@ -99,10 +108,19 @@ public class TaskItem : Entity
         UpdatedAt = now;
     }
 
-    internal void SetStatus(TaskItemStatus status, DateTime now)
+    internal void MoveTo(BoardColumn column, DateTime now)
     {
-        Status = status;
+        ColumnId = column.Id;
+        Status = column.Category;
         UpdatedAt = now;
+    }
+
+    /// <summary>Re-applies the category after the task's column was re-categorized.</summary>
+    public void SyncWithColumn(BoardColumn column)
+    {
+        if (column.Id != ColumnId)
+            throw new DomainException("Task is not in this column.");
+        Status = column.Category;
     }
 
     public Comment AddComment(Guid authorId, string body, DateTime now)

@@ -7,7 +7,7 @@ namespace ZaneTask.Application.Common;
 internal static class ProjectAccess
 {
     /// <summary>
-    /// Loads a project with its members (and optionally labels). Non-members get a 404 rather than a 403
+    /// Loads a project with its members and board columns (and optionally labels). Non-members get a 404 rather than a 403
     /// so that project ids cannot be probed.
     /// </summary>
     public static async Task<Project> GetProjectForMemberAsync(
@@ -17,7 +17,7 @@ internal static class ProjectAccess
         CancellationToken cancellationToken,
         bool includeLabels = false)
     {
-        var query = db.Projects.Include(p => p.Members).AsQueryable();
+        var query = db.Projects.Include(p => p.Members).Include(p => p.Columns).AsQueryable();
         if (includeLabels)
             query = query.Include(p => p.Labels);
 

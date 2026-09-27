@@ -48,6 +48,23 @@ public sealed class ProjectsController(ProjectService projects) : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{projectId:guid}/columns")]
+    public Task<ProjectDto> CreateColumn(Guid projectId, SaveColumnRequest request, CancellationToken ct) =>
+        projects.CreateColumnAsync(projectId, request, ct);
+
+    [HttpPut("{projectId:guid}/columns/{columnId:guid}")]
+    public Task<ProjectDto> UpdateColumn(Guid projectId, Guid columnId, SaveColumnRequest request, CancellationToken ct) =>
+        projects.UpdateColumnAsync(projectId, columnId, request, ct);
+
+    [HttpPut("{projectId:guid}/columns/{columnId:guid}/move")]
+    public Task<ProjectDto> MoveColumn(Guid projectId, Guid columnId, MoveColumnRequest request, CancellationToken ct) =>
+        projects.MoveColumnAsync(projectId, columnId, request, ct);
+
+    /// <summary>Deletes a column; its tasks move to <paramref name="moveTasksTo"/> (default: leftmost other column).</summary>
+    [HttpDelete("{projectId:guid}/columns/{columnId:guid}")]
+    public Task<ProjectDto> DeleteColumn(Guid projectId, Guid columnId, [FromQuery] Guid? moveTasksTo, CancellationToken ct) =>
+        projects.DeleteColumnAsync(projectId, columnId, moveTasksTo, ct);
+
     [HttpPost("{projectId:guid}/labels")]
     public Task<LabelDto> CreateLabel(Guid projectId, SaveLabelRequest request, CancellationToken ct) =>
         projects.CreateLabelAsync(projectId, request, ct);

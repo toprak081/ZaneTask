@@ -30,6 +30,15 @@ public sealed class ApiClient(HttpClient http)
         SendAsync<ProjectMemberDto>(HttpMethod.Put, $"api/projects/{projectId}/members/{userId}", new ChangeMemberRoleRequest(role));
     public Task RemoveMemberAsync(Guid projectId, Guid userId) => SendAsync(HttpMethod.Delete, $"api/projects/{projectId}/members/{userId}");
 
+    public Task<ProjectDto> CreateColumnAsync(Guid projectId, SaveColumnRequest request) =>
+        SendAsync<ProjectDto>(HttpMethod.Post, $"api/projects/{projectId}/columns", request);
+    public Task<ProjectDto> UpdateColumnAsync(Guid projectId, Guid columnId, SaveColumnRequest request) =>
+        SendAsync<ProjectDto>(HttpMethod.Put, $"api/projects/{projectId}/columns/{columnId}", request);
+    public Task<ProjectDto> MoveColumnAsync(Guid projectId, Guid columnId, int position) =>
+        SendAsync<ProjectDto>(HttpMethod.Put, $"api/projects/{projectId}/columns/{columnId}/move", new MoveColumnRequest(position));
+    public Task<ProjectDto> DeleteColumnAsync(Guid projectId, Guid columnId, Guid moveTasksTo) =>
+        SendAsync<ProjectDto>(HttpMethod.Delete, $"api/projects/{projectId}/columns/{columnId}?moveTasksTo={moveTasksTo}");
+
     public Task<LabelDto> CreateLabelAsync(Guid projectId, SaveLabelRequest request) =>
         SendAsync<LabelDto>(HttpMethod.Post, $"api/projects/{projectId}/labels", request);
     public Task<LabelDto> UpdateLabelAsync(Guid projectId, Guid labelId, SaveLabelRequest request) =>
@@ -46,8 +55,11 @@ public sealed class ApiClient(HttpClient http)
     public Task DeleteTaskAsync(Guid taskId) => SendAsync(HttpMethod.Delete, $"api/tasks/{taskId}");
     public Task<TaskDto> AssignTaskAsync(Guid taskId, Guid? assigneeId) =>
         SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/assignee", new AssignTaskRequest(assigneeId));
-    public Task<TaskDto> MoveTaskAsync(Guid taskId, TaskItemStatus status, int position) =>
-        SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/move", new MoveTaskRequest(status, position));
+    public Task<TaskDto> MoveTaskAsync(Guid taskId, Guid columnId, int position) =>
+        SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/move", new MoveTaskRequest(columnId, position));
+    /// <summary>Moves to the leftmost column of a category, e.g. "mark as done".</summary>
+    public Task<TaskDto> MoveTaskToCategoryAsync(Guid taskId, TaskItemStatus category, int position) =>
+        SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/move", new MoveTaskRequest(null, position, category));
     public Task<TaskDto> AddTaskLabelAsync(Guid taskId, Guid labelId) => SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/labels/{labelId}");
     public Task<TaskDto> RemoveTaskLabelAsync(Guid taskId, Guid labelId) => SendAsync<TaskDto>(HttpMethod.Delete, $"api/tasks/{taskId}/labels/{labelId}");
 

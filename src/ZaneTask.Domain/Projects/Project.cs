@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using ZaneTask.Domain.Common;
+using ZaneTask.Domain.Tasks;
 
 namespace ZaneTask.Domain.Projects;
 
@@ -8,9 +9,11 @@ public partial class Project : Entity
     public const int NameMaxLength = 100;
     public const int KeyMaxLength = 10;
     public const int DescriptionMaxLength = 2000;
+    public const int MaxColumns = 12;
 
     private readonly List<ProjectMember> _members = [];
     private readonly List<Label> _labels = [];
+    private readonly List<BoardColumn> _columns = [];
 
     private Project()
     {
@@ -32,6 +35,11 @@ public partial class Project : Entity
     public IReadOnlyCollection<ProjectMember> Members => _members;
     public IReadOnlyCollection<Label> Labels => _labels;
 
+    /// <summary>Board columns; see <see cref="OrderedColumns"/> for board order.</summary>
+    public IReadOnlyCollection<BoardColumn> Columns => _columns;
+
+    public IEnumerable<BoardColumn> OrderedColumns => _columns.OrderBy(c => c.Position);
+
     public static Project Create(string name, string? description, string key, Guid ownerId, DateTime now)
     {
         var project = new Project
@@ -42,6 +50,9 @@ public partial class Project : Entity
             CreatedAt = now,
         };
         project._members.Add(new ProjectMember(project.Id, ownerId, ProjectRole.Owner, now));
+        project.AddColumn("To do", TaskItemStatus.Todo);
+        project.AddColumn("In progress", TaskItemStatus.InProgress);
+        project.AddColumn("Done", TaskItemStatus.Done);
         return project;
     }
 
@@ -92,6 +103,77 @@ public partial class Project : Entity
         if (member.Role == ProjectRole.Owner)
             EnsureAnotherOwnerExists(userId);
         _members.Remove(member);
+    }
+
+    public BoardColumn AddColumn(string name, TaskItemStatus category)
+    {
+        if (_columns.Count >= MaxColumns)
+            throw new DomainException($"A board can have at most {MaxColumns} columns.");
+
+        var column = new BoardColumn(Id, name, category, _columns.Count);
+        EnsureColumnNameIsUnique(column.Name, exceptId: null);
+        _columns.Add(column);
+        return column;
+    }
+
+    public BoardColumn RenameColumn(Guid columnId, string name)
+    {
+        var column = GetColumn(columnId);
+        column.Rename(name);
+        EnsureColumnNameIsUnique(column.Name, exceptId: columnId);
+        return column;
+    }
+
+    /// <summary>Changes what a column means. Callers must re-sync the category of the column's tasks.</summary>
+    public BoardColumn SetColumnCategory(Guid columnId, TaskItemStatus category)
+    {
+        var column = GetColumn(columnId);
+        column.Category = category;
+        return column;
+    }
+
+    /// <summary>Moves a column to <paramref name="position"/> (clamped) and renumbers the others.</summary>
+    public void MoveColumn(Guid columnId, int position)
+    {
+        if (position < 0)
+            throw new DomainException("Position cannot be negative.");
+
+        var column = GetColumn(columnId);
+        var ordered = OrderedColumns.Where(c => c != column).ToList();
+        ordered.Insert(Math.Min(position, ordered.Count), column);
+        RenumberColumns(ordered);
+    }
+
+    /// <summary>Removes an empty column. Move its tasks to another column first.</summary>
+    public void RemoveColumn(Guid columnId)
+    {
+        if (_columns.Count <= 1)
+            throw new DomainException("A board needs at least one column.");
+
+        _columns.Remove(GetColumn(columnId));
+        RenumberColumns(OrderedColumns.ToList());
+    }
+
+    public BoardColumn GetColumn(Guid columnId) =>
+        _columns.FirstOrDefault(c => c.Id == columnId)
+        ?? throw new DomainException("Column does not belong to this project.");
+
+    /// <summary>The leftmost column with <paramref name="category"/>, or the leftmost column if there is none.</summary>
+    public BoardColumn DefaultColumn(TaskItemStatus category) =>
+        OrderedColumns.FirstOrDefault(c => c.Category == category)
+        ?? OrderedColumns.FirstOrDefault()
+        ?? throw new DomainException("The project has no columns.");
+
+    private static void RenumberColumns(List<BoardColumn> columns)
+    {
+        for (var i = 0; i < columns.Count; i++)
+            columns[i].Position = i;
+    }
+
+    private void EnsureColumnNameIsUnique(string name, Guid? exceptId)
+    {
+        if (_columns.Any(c => c.Id != exceptId && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
+            throw new DomainException($"A column named '{name}' already exists.");
     }
 
     public Label AddLabel(string name, string color)

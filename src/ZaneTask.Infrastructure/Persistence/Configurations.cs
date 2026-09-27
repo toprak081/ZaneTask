@@ -34,6 +34,10 @@ internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
 
         builder.HasMany(p => p.Labels).WithOne().HasForeignKey(l => l.ProjectId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(p => p.Labels).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(p => p.Columns).WithOne().HasForeignKey(c => c.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(p => p.Columns).UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Ignore(p => p.OrderedColumns);
     }
 }
 
@@ -46,6 +50,19 @@ internal sealed class ProjectMemberConfiguration : IEntityTypeConfiguration<Proj
         builder.HasIndex(m => m.UserId);
         builder.Property(m => m.Role).HasConversion<string>().HasMaxLength(20);
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class BoardColumnConfiguration : IEntityTypeConfiguration<BoardColumn>
+{
+    public void Configure(EntityTypeBuilder<BoardColumn> builder)
+    {
+        builder.ToTable("BoardColumns");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Id).ValueGeneratedNever();
+        builder.Property(c => c.Name).HasMaxLength(BoardColumn.NameMaxLength).IsRequired();
+        builder.Property(c => c.Category).HasConversion<string>().HasMaxLength(20);
+        builder.HasIndex(c => new { c.ProjectId, c.Position });
     }
 }
 
@@ -75,7 +92,10 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.Priority).HasConversion<string>().HasMaxLength(20);
         builder.Property(t => t.Type).HasConversion<string>().HasMaxLength(20);
         builder.HasIndex(t => new { t.ProjectId, t.Number }).IsUnique();
-        builder.HasIndex(t => new { t.ProjectId, t.Status, t.Position });
+        builder.HasIndex(t => new { t.ColumnId, t.Position });
+        builder.HasIndex(t => new { t.ProjectId, t.Status });
+        // No cascade: a column can only be deleted after its tasks were moved (ProjectService.DeleteColumnAsync).
+        builder.HasOne<BoardColumn>().WithMany().HasForeignKey(t => t.ColumnId).OnDelete(DeleteBehavior.NoAction);
         builder.HasIndex(t => t.AssigneeId);
 
         builder.HasOne<Project>().WithMany().HasForeignKey(t => t.ProjectId).OnDelete(DeleteBehavior.Cascade);

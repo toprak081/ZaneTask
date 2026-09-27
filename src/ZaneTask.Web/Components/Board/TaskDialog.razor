@@ -32,11 +32,11 @@
                     </InputSelect>
                 </div>
                 <div class="field">
-                    <label for="task-status">Status</label>
-                    <InputSelect id="task-status" class="input" @bind-Value="_form.Status">
-                        @foreach (var status in Display.Statuses)
+                    <label for="task-status">Column</label>
+                    <InputSelect id="task-status" class="input" @bind-Value="_form.ColumnId">
+                        @foreach (var column in Project.Columns)
                         {
-                            <option value="@status">@status.Name()</option>
+                            <option value="@column.Id">@column.Name</option>
                         }
                     </InputSelect>
                 </div>
@@ -220,11 +220,11 @@
     private bool IsOwner => Project.MyRole == ProjectRole.Owner;
     private bool CanDelete => _task is not null && (IsOwner || _task.CreatedBy.Id == CurrentUserId);
 
-    public void OpenNew(TaskItemStatus status)
+    public void OpenNew(Guid columnId)
     {
         _task = null;
         _comments = null;
-        _form = new TaskForm { Status = status };
+        _form = new TaskForm { ColumnId = columnId };
         _changed = false;
         _dialog.Show();
     }
@@ -268,8 +268,8 @@
             if (_task is null)
             {
                 await Api.CreateTaskAsync(Project.Id, new CreateTaskRequest(
-                    _form.Title.Trim(), _form.Description, _form.Status, _form.Priority, _form.DueDate,
-                    _form.AssigneeGuid, _form.LabelIds.ToList(), _form.Type));
+                    _form.Title.Trim(), _form.Description, TaskItemStatus.Todo, _form.Priority, _form.DueDate,
+                    _form.AssigneeGuid, _form.LabelIds.ToList(), _form.Type, _form.ColumnId));
                 Toasts.Success("Task created.");
             }
             else
@@ -298,8 +298,8 @@
         if (_form.AssigneeGuid != task.Assignee?.Id)
             await Api.AssignTaskAsync(task.Id, _form.AssigneeGuid);
 
-        if (_form.Status != task.Status)
-            await Api.MoveTaskAsync(task.Id, _form.Status, int.MaxValue / 2);
+        if (_form.ColumnId != task.ColumnId)
+            await Api.MoveTaskAsync(task.Id, _form.ColumnId, int.MaxValue / 2);
 
         var current = task.Labels.Select(l => l.Id).ToHashSet();
         foreach (var added in _form.LabelIds.Except(current))
